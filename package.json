@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "types": "npx supabase gen types typescript --linked > types/database.types.ts",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
@@ -11,6 +12,8 @@
   "dependencies": {
     "@base-ui/react": "^1.1.0",
     "@radix-ui/react-switch": "^1.2.6",
+    "@supabase/ssr": "^0.8.0",
+    "@supabase/supabase-js": "^2.95.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
