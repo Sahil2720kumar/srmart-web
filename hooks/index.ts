@@ -14,6 +14,8 @@ export * from './orders/useOrders';
 
 // Products
 export * from './products/useProducts';
+export * from './products/useCategories';
+
 
 // Cart & Wishlist
 export * from './cart/useCart';

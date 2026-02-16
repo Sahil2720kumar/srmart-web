@@ -1,3 +1,4 @@
+// app/admin/products/page.tsx
 "use client";
 
 import { useState } from "react";
@@ -37,128 +38,13 @@ import {
   XCircle,
   Star,
   Package,
+  Loader2,
 } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
-
-// Mock Data
-const mockProducts = [
-  {
-    id: "PROD001",
-    name: "Organic Basmati Rice",
-    slug: "organic-basmati-rice",
-    sku: "SKU001",
-    barcode: "8901234567890",
-    category: "Grains & Rice",
-    subcategory: "Rice",
-    price: 299.00,
-    discountPrice: 249.00,
-    stockQuantity: 150,
-    stockStatus: "in_stock",
-    commissionType: "category",
-    commissionRate: 12,
-    isAvailable: true,
-    rating: 4.5,
-    reviewCount: 234,
-    image: "/products/rice.jpg",
-    isOrganic: true,
-    isVeg: true,
-    vendorId: "V001",
-    vendorName: "Organic Farms Ltd",
-  },
-  {
-    id: "PROD002",
-    name: "Fresh Milk 1L",
-    slug: "fresh-milk-1l",
-    sku: "SKU002",
-    barcode: "8901234567891",
-    category: "Dairy",
-    subcategory: "Milk",
-    price: 65.00,
-    discountPrice: null,
-    stockQuantity: 8,
-    stockStatus: "low_stock",
-    commissionType: "custom",
-    commissionRate: 8,
-    isAvailable: true,
-    rating: 4.8,
-    reviewCount: 456,
-    image: "/products/milk.jpg",
-    isOrganic: false,
-    isVeg: true,
-    vendorId: "V002",
-    vendorName: "Dairy Fresh",
-  },
-  {
-    id: "PROD003",
-    name: "Premium Green Tea",
-    slug: "premium-green-tea",
-    sku: "SKU003",
-    barcode: "8901234567892",
-    category: "Beverages",
-    subcategory: "Tea",
-    price: 450.00,
-    discountPrice: 399.00,
-    stockQuantity: 0,
-    stockStatus: "out_of_stock",
-    commissionType: "subcategory",
-    commissionRate: 15,
-    isAvailable: false,
-    rating: 4.6,
-    reviewCount: 189,
-    image: "/products/tea.jpg",
-    isOrganic: true,
-    isVeg: true,
-    vendorId: "V001",
-    vendorName: "Organic Farms Ltd",
-  },
-  {
-    id: "PROD004",
-    name: "Whole Wheat Bread",
-    slug: "whole-wheat-bread",
-    sku: "SKU004",
-    barcode: "8901234567893",
-    category: "Bakery",
-    subcategory: "Bread",
-    price: 45.00,
-    discountPrice: null,
-    stockQuantity: 75,
-    stockStatus: "in_stock",
-    commissionType: "default",
-    commissionRate: 10,
-    isAvailable: true,
-    rating: 4.3,
-    reviewCount: 312,
-    image: "/products/bread.jpg",
-    isOrganic: false,
-    isVeg: true,
-    vendorId: "V003",
-    vendorName: "Baker's Delight",
-  },
-  {
-    id: "PROD005",
-    name: "Organic Honey 500g",
-    slug: "organic-honey-500g",
-    sku: "SKU005",
-    barcode: "8901234567894",
-    category: "Pantry",
-    subcategory: "Sweeteners",
-    price: 650.00,
-    discountPrice: 599.00,
-    stockQuantity: 45,
-    stockStatus: "in_stock",
-    commissionType: "custom",
-    commissionRate: 18,
-    isAvailable: true,
-    rating: 4.9,
-    reviewCount: 567,
-    image: "/products/honey.jpg",
-    isOrganic: true,
-    isVeg: true,
-    vendorId: "V001",
-    vendorName: "Organic Farms Ltd",
-  },
-];
+import { useProducts, useToggleProductAvailability, useCategories } from "@/hooks";
+import { useVendors } from "@/hooks";
+import { toast } from "sonner";
 
 export default function AdminProductsPage() {
   const [searchTerm, setSearchTerm] = useState("");
@@ -168,9 +54,24 @@ export default function AdminProductsPage() {
   const [availabilityFilter, setAvailabilityFilter] = useState("all");
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
-  const [products, setProducts] = useState(mockProducts);
 
-  const formatCurrency = (amount) => {
+  // Build filters for the query
+  const productFilters = {
+    ...(categoryFilter !== "all" && { category_id: categoryFilter }),
+    ...(vendorFilter !== "all" && { vendor_id: vendorFilter }),
+    ...(availabilityFilter !== "all" && {
+      is_available: availabilityFilter === "available",
+    }),
+    ...(searchTerm && { search: searchTerm }),
+  };
+
+  // Fetch data
+  const { data: products, isLoading: isLoadingProducts } = useProducts(productFilters);
+  const { data: categories } = useCategories();
+  const { data: vendors } = useVendors();
+  const toggleAvailability = useToggleProductAvailability();
+
+  const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("en-IN", {
       style: "currency",
       currency: "INR",
@@ -178,7 +79,7 @@ export default function AdminProductsPage() {
     }).format(amount);
   };
 
-  const getStockBadge = (status) => {
+  const getStockBadge = (status: string) => {
     switch (status) {
       case "in_stock":
         return (
@@ -193,63 +94,57 @@ export default function AdminProductsPage() {
           </Badge>
         );
       case "out_of_stock":
-        return (
-          <Badge variant="destructive">Out of Stock</Badge>
-        );
+        return <Badge variant="destructive">Out of Stock</Badge>;
       default:
         return null;
     }
   };
 
-  const handleToggleAvailability = (productId) => {
-    setProducts((prev) =>
-      prev.map((p) =>
-        p.id === productId ? { ...p, isAvailable: !p.isAvailable } : p
-      )
+  const handleToggleAvailability = (productId: string, currentStatus: boolean) => {
+    toggleAvailability.mutate(
+      {
+        productId,
+        isAvailable: !currentStatus,
+      },
+      {
+        onSuccess: () => {
+          toast.success(
+            currentStatus ? "Product disabled successfully" : "Product enabled successfully"
+          );
+        },
+        onError: (error) => {
+          toast.error(`Failed to update product: ${error.message}`);
+        },
+      }
     );
   };
 
-  const filterProducts = (prods) => {
-    let filtered = prods;
-
-    if (searchTerm) {
-      filtered = filtered.filter(
-        (p) =>
-          p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          p.sku.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          p.barcode.includes(searchTerm)
-      );
-    }
-
-    if (categoryFilter !== "all") {
-      filtered = filtered.filter((p) => p.category === categoryFilter);
-    }
-
-    if (vendorFilter !== "all") {
-      filtered = filtered.filter((p) => p.vendorId === vendorFilter);
-    }
-
-    if (stockFilter !== "all") {
-      filtered = filtered.filter((p) => p.stockStatus === stockFilter);
-    }
-
-    if (availabilityFilter !== "all") {
-      const isAvailable = availabilityFilter === "available";
-      filtered = filtered.filter((p) => p.isAvailable === isAvailable);
-    }
-
-    return filtered;
+  // Filter products by stock status
+  const filterProductsByStock = (prods: any[]) => {
+    if (stockFilter === "all") return prods;
+    return prods.filter((p) => p.stock_status === stockFilter);
   };
 
-  const filteredProducts = filterProducts(products);
+  const filteredProducts = products ? filterProductsByStock(products) : [];
   const totalPages = Math.ceil(filteredProducts.length / pageSize);
   const paginatedProducts = filteredProducts.slice(
     (currentPage - 1) * pageSize,
     currentPage * pageSize
   );
 
-  const categories = [...new Set(mockProducts.map((p) => p.category))];
-  const vendors = [...new Set(mockProducts.map((p) => ({ id: p.vendorId, name: p.vendorName })))];
+  // Calculate stats
+  const inStockCount = products?.filter((p) => p.stock_status === "in_stock").length || 0;
+  const lowStockCount = products?.filter((p) => p.stock_status === "low_stock").length || 0;
+  const outOfStockCount =
+    products?.filter((p) => p.stock_status === "out_of_stock").length || 0;
+
+  if (isLoadingProducts) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-green-50 to-emerald-50 p-8 flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-green-50 to-emerald-50 p-8">
@@ -260,9 +155,7 @@ export default function AdminProductsPage() {
             <h1 className="text-4xl font-bold bg-gradient-to-r from-slate-900 via-green-900 to-emerald-900 bg-clip-text text-transparent">
               Products
             </h1>
-            <p className="text-slate-600 mt-2">
-              Manage products across all vendors
-            </p>
+            <p className="text-slate-600 mt-2">Manage products across all vendors</p>
           </div>
           <Link href="/admin/products/add">
             <Button className="gap-2 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700">
@@ -279,7 +172,7 @@ export default function AdminProductsPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-blue-100">Total Products</p>
-                  <p className="text-3xl font-bold mt-1">{mockProducts.length}</p>
+                  <p className="text-3xl font-bold mt-1">{products?.length || 0}</p>
                 </div>
                 <Package className="w-10 h-10 text-blue-200" />
               </div>
@@ -291,9 +184,7 @@ export default function AdminProductsPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-emerald-100">In Stock</p>
-                  <p className="text-3xl font-bold mt-1">
-                    {mockProducts.filter((p) => p.stockStatus === "in_stock").length}
-                  </p>
+                  <p className="text-3xl font-bold mt-1">{inStockCount}</p>
                 </div>
                 <Package className="w-10 h-10 text-emerald-200" />
               </div>
@@ -305,9 +196,7 @@ export default function AdminProductsPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-amber-100">Low Stock</p>
-                  <p className="text-3xl font-bold mt-1">
-                    {mockProducts.filter((p) => p.stockStatus === "low_stock").length}
-                  </p>
+                  <p className="text-3xl font-bold mt-1">{lowStockCount}</p>
                 </div>
                 <Package className="w-10 h-10 text-amber-200" />
               </div>
@@ -319,9 +208,7 @@ export default function AdminProductsPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-red-100">Out of Stock</p>
-                  <p className="text-3xl font-bold mt-1">
-                    {mockProducts.filter((p) => p.stockStatus === "out_of_stock").length}
-                  </p>
+                  <p className="text-3xl font-bold mt-1">{outOfStockCount}</p>
                 </div>
                 <Package className="w-10 h-10 text-red-200" />
               </div>
@@ -336,7 +223,7 @@ export default function AdminProductsPage() {
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4" />
                 <Input
-                  placeholder="Search products, SKU, barcode..."
+                  placeholder="Search products, SKU..."
                   value={searchTerm}
                   onChange={(e) => {
                     setSearchTerm(e.target.value);
@@ -358,9 +245,9 @@ export default function AdminProductsPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Categories</SelectItem>
-                  {categories.map((cat) => (
-                    <SelectItem key={cat} value={cat}>
-                      {cat}
+                  {categories?.map((cat) => (
+                    <SelectItem key={cat.id} value={cat.id}>
+                      {cat.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -378,9 +265,9 @@ export default function AdminProductsPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Vendors</SelectItem>
-                  {vendors.map((vendor) => (
-                    <SelectItem key={vendor.id} value={vendor.id}>
-                      {vendor.name}
+                  {vendors?.map((vendor) => (
+                    <SelectItem key={vendor.user_id} value={vendor.user_id}>
+                      {vendor.store_name}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -462,29 +349,37 @@ export default function AdminProductsPage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {paginatedProducts.map((product) => (
+                      {paginatedProducts.map((product: any) => (
                         <TableRow
                           key={product.id}
                           className={
-                            product.stockStatus === "low_stock"
+                            product.stock_status === "low_stock"
                               ? "bg-amber-50"
-                              : product.stockStatus === "out_of_stock"
+                              : product.stock_status === "out_of_stock"
                               ? "bg-red-50"
                               : ""
                           }
                         >
                           <TableCell>
                             <div className="w-12 h-12 rounded-lg bg-slate-200 flex items-center justify-center overflow-hidden">
-                              <Package className="w-6 h-6 text-slate-400" />
+                              {product.image ? (
+                                <Image
+                                  src={product.image}
+                                  alt={product.name}
+                                  width={48}
+                                  height={48}
+                                  className="object-cover"
+                                />
+                              ) : (
+                                <Package className="w-6 h-6 text-slate-400" />
+                              )}
                             </div>
                           </TableCell>
                           <TableCell>
                             <div className="font-medium">{product.name}</div>
-                            <div className="text-sm text-slate-500">
-                              SKU: {product.sku}
-                            </div>
+                            <div className="text-sm text-slate-500">SKU: {product.sku}</div>
                             <div className="flex gap-1 mt-1">
-                              {product.isOrganic && (
+                              {product.is_organic && (
                                 <Badge
                                   variant="outline"
                                   className="text-xs bg-green-50 text-green-700 border-green-200"
@@ -492,7 +387,7 @@ export default function AdminProductsPage() {
                                   Organic
                                 </Badge>
                               )}
-                              {product.isVeg && (
+                              {product.is_veg && (
                                 <Badge
                                   variant="outline"
                                   className="text-xs bg-emerald-50 text-emerald-700 border-emerald-200"
@@ -504,65 +399,62 @@ export default function AdminProductsPage() {
                           </TableCell>
                           <TableCell>
                             <div className="text-sm font-medium">
-                              {product.category}
+                              {product.category?.name}
                             </div>
                             <div className="text-xs text-slate-500">
-                              {product.subcategory}
+                              {product.sub_category?.name}
                             </div>
                           </TableCell>
                           <TableCell>
                             <div className="text-sm font-medium">
-                              {product.vendorName}
-                            </div>
-                            <div className="text-xs text-slate-500">
-                              {product.vendorId}
+                              {product.vendor?.store_name}
                             </div>
                           </TableCell>
                           <TableCell>
                             <div className="font-semibold text-emerald-600">
                               {formatCurrency(
-                                product.discountPrice || product.price
+                                parseFloat(product.discount_price) ||
+                                  parseFloat(product.price)
                               )}
                             </div>
-                            {product.discountPrice && (
+                            {product.discount_price && (
                               <div className="text-sm text-slate-500 line-through">
-                                {formatCurrency(product.price)}
+                                {formatCurrency(parseFloat(product.price))}
                               </div>
                             )}
                           </TableCell>
                           <TableCell>
-                            <div className="font-medium">
-                              {product.stockQuantity}
-                            </div>
-                            {getStockBadge(product.stockStatus)}
+                            <div className="font-medium">{product.stock_quantity}</div>
+                            {getStockBadge(product.stock_status)}
                           </TableCell>
                           <TableCell>
                             <div className="text-sm">
                               <Badge variant="outline" className="text-xs">
-                                {product.commissionType}
+                                {product.commission_type}
                               </Badge>
                             </div>
                             <div className="text-xs text-slate-600 mt-1">
-                              {product.commissionRate}%
+                              {product.commission_rate}%
                             </div>
                           </TableCell>
                           <TableCell>
                             <Switch
-                              checked={product.isAvailable}
+                              checked={product.is_available}
                               onCheckedChange={() =>
-                                handleToggleAvailability(product.id)
+                                handleToggleAvailability(product.id, product.is_available)
                               }
+                              disabled={toggleAvailability.isPending}
                             />
                           </TableCell>
                           <TableCell>
                             <div className="flex items-center gap-1">
                               <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
                               <span className="font-medium">
-                                {product.rating}
+                                {parseFloat(product.rating || "0").toFixed(1)}
                               </span>
                             </div>
                             <div className="text-xs text-slate-500">
-                              {product.reviewCount} reviews
+                              {product.review_count} reviews
                             </div>
                           </TableCell>
                           <TableCell className="text-right">
@@ -600,9 +492,14 @@ export default function AdminProductsPage() {
                                     Manage Images
                                   </Link>
                                 </DropdownMenuItem>
-                                <DropdownMenuItem className="text-red-600">
+                                <DropdownMenuItem
+                                  className="text-red-600"
+                                  onClick={() =>
+                                    handleToggleAvailability(product.id, product.is_available)
+                                  }
+                                >
                                   <XCircle className="w-4 h-4 mr-2" />
-                                  Deactivate
+                                  {product.is_available ? "Deactivate" : "Activate"}
                                 </DropdownMenuItem>
                               </DropdownMenuContent>
                             </DropdownMenu>

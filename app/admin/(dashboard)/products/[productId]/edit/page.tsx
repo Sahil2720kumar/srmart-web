@@ -1,3 +1,4 @@
+// app/admin/products/[id]/edit/page.tsx
 "use client";
 
 import { useState, useEffect } from "react";
@@ -15,74 +16,78 @@ import {
 } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Save, X, AlertCircle, RotateCcw } from "lucide-react";
+import { ArrowLeft, Save, X, AlertCircle, RotateCcw, Loader2 } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
+import {
+  useProduct,
+  useUpdateProduct,
+  useCategories,
+  useSubCategoriesByCategory,
+} from "@/hooks";
+import { useVendors } from "@/hooks";
+import { toast } from "sonner";
+import type { ProductUpdate } from "@/types/supabase";
 
-const categories = [
-  { value: "grains", label: "Grains & Rice", subcategories: ["Rice", "Wheat", "Pulses"] },
-  { value: "dairy", label: "Dairy", subcategories: ["Milk", "Cheese", "Yogurt", "Butter"] },
-  { value: "beverages", label: "Beverages", subcategories: ["Tea", "Coffee", "Juice", "Soda"] },
-  { value: "bakery", label: "Bakery", subcategories: ["Bread", "Cakes", "Cookies", "Pastries"] },
-  { value: "pantry", label: "Pantry", subcategories: ["Sweeteners", "Spices", "Oils", "Sauces"] },
-];
+export default function EditProductPage() {
 
-const vendors = [
-  { value: "V001", label: "Organic Farms Ltd" },
-  { value: "V002", label: "Dairy Fresh" },
-  { value: "V003", label: "Baker's Delight" },
-  { value: "V004", label: "Green Grocers" },
-  { value: "V005", label: "Fresh Harvest Co" },
-];
-
-// Mock existing product data
-const existingProduct = {
-  id: "PROD001",
-  name: "Organic Basmati Rice",
-  slug: "organic-basmati-rice",
-  sku: "SKU001",
-  barcode: "8901234567890",
-  shortDescription: "Premium quality aged basmati rice from organic farms",
-  fullDescription:
-    "Our Organic Basmati Rice is sourced from certified organic farms in the foothills of the Himalayas. Each grain is aged for a minimum of 2 years to enhance flavor and aroma.",
-  category: "grains",
-  subcategory: "Rice",
-  vendorId: "V001",
-  price: "299.00",
-  discountPrice: "249.00",
-  unit: "kg",
-  stockQuantity: "150",
-  lowStockThreshold: "20",
-  commissionType: "category",
-  commissionRate: "12",
-  isAvailable: true,
-  isFeatured: true,
-  isBestSeller: true,
-  isTrending: false,
-  isOrganic: true,
-  isVeg: true,
-  expiryDate: "2025-12-31",
-};
-
-export default function EditProductPage({ params }) {
   const router = useRouter();
-  const [formData, setFormData] = useState(existingProduct);
-  const [selectedCategory, setSelectedCategory] = useState(null);
+  const { productId } = useParams();
+  console.log("id", productId);
+
+  const { data: product, isLoading: isLoadingProduct } = useProduct(productId);
+  const updateProduct = useUpdateProduct();
+  const { data: categories } = useCategories();
+  const { data: vendors } = useVendors({ is_verified: true });
+
+  const [formData, setFormData] = useState<any>(null);
   const [hasChanges, setHasChanges] = useState(false);
-  const [changedFields, setChangedFields] = useState(new Set());
+  const [changedFields, setChangedFields] = useState(new Set<string>());
 
+  // Get subcategories based on selected category
+  const { data: subCategories } = useSubCategoriesByCategory(
+    formData?.category_id || ""
+  );
+
+  // Initialize form data when product loads
   useEffect(() => {
-    const category = categories.find((c) => c.value === existingProduct.category);
-    setSelectedCategory(category);
-  }, []);
+    if (product && !formData) {
+      setFormData({
+        name: product.name || "",
+        slug: product.slug || "",
+        sku: product.sku || "",
+        barcode: product.barcode || "",
+        short_description: product.short_description || "",
+        description: product.description || "",
+        category_id: product.category_id || "",
+        sub_category_id: product.sub_category_id || "",
+        vendor_id: product.vendor_id || "",
+        price: product.price?.toString() || "",
+        discount_price: product.discount_price?.toString() || "",
+        discount_percentage: product.discount_percentage?.toString() || "0",
+        unit: product.unit || "kg",
+        stock_quantity: product.stock_quantity?.toString() || "",
+        low_stock_threshold: product.low_stock_threshold?.toString() || "10",
+        commission_type: product.commission_type || "default",
+        commission_rate: product.commission_rate?.toString() || "",
+        is_available: product.is_available ?? true,
+        is_featured: product.is_featured ?? false,
+        is_best_seller: product.is_best_seller ?? false,
+        is_trending: product.is_trending ?? false,
+        is_organic: product.is_organic ?? false,
+        is_veg: product.is_veg ?? true,
+        expiry_date: product.expiry_date || "",
+      });
+    }
+  }, [product, formData]);
 
-  const handleFieldChange = (field, value) => {
+  const handleFieldChange = (field: string, value: any) => {
     setFormData({ ...formData, [field]: value });
     setHasChanges(true);
     setChangedFields((prev) => new Set([...prev, field]));
   };
 
-  const handleNameChange = (name) => {
+  const handleNameChange = (name: string) => {
     const slug = name
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, "-")
@@ -92,19 +97,19 @@ export default function EditProductPage({ params }) {
     setChangedFields((prev) => new Set([...prev, "name", "slug"]));
   };
 
-  const handlePriceChange = (field, value) => {
+  const handlePriceChange = (field: "price" | "discount_price", value: string) => {
     const updated = { ...formData, [field]: value };
 
-    if (field === "price" || field === "discountPrice") {
+    if (field === "price" || field === "discount_price") {
       const price = parseFloat(updated.price) || 0;
-      const discountPrice = parseFloat(updated.discountPrice) || 0;
+      const discountPrice = parseFloat(updated.discount_price) || 0;
 
       if (price > 0 && discountPrice > 0 && discountPrice < price) {
-        updated.discountPercentage = Math.round(
-          ((price - discountPrice) / price) * 100
+        updated.discount_percentage = String(
+          Math.round(((price - discountPrice) / price) * 100)
         );
       } else {
-        updated.discountPercentage = 0;
+        updated.discount_percentage = "0";
       }
     }
 
@@ -113,28 +118,60 @@ export default function EditProductPage({ params }) {
     setChangedFields((prev) => new Set([...prev, field]));
   };
 
-  const handleCategoryChange = (categoryValue) => {
-    const category = categories.find((c) => c.value === categoryValue);
-    setSelectedCategory(category);
-    setFormData({ ...formData, category: categoryValue, subcategory: "" });
+  const handleCategoryChange = (categoryId: string) => {
+    setFormData({ ...formData, category_id: categoryId, sub_category_id: "" });
     setHasChanges(true);
-    setChangedFields((prev) => new Set([...prev, "category", "subcategory"]));
+    setChangedFields((prev) => new Set([...prev, "category_id", "sub_category_id"]));
   };
 
   const handleResetDiscount = () => {
     if (confirm("Are you sure you want to reset the discount?")) {
-      setFormData({ ...formData, discountPrice: "", discountPercentage: 0 });
+      setFormData({ ...formData, discount_price: "", discount_percentage: "0" });
       setHasChanges(true);
-      setChangedFields((prev) => new Set([...prev, "discountPrice"]));
+      setChangedFields((prev) => new Set([...prev, "discount_price"]));
     }
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    console.log("Updated Product Data:", formData);
-    console.log("Changed Fields:", Array.from(changedFields));
-    // Here you would typically send the data to your backend
-    router.push(`/admin/products/${formData.id}`);
+
+    // Build updates object with only changed fields
+    const updates: ProductUpdate = {};
+    changedFields.forEach((field) => {
+      const value = formData[field];
+
+      // Handle numeric fields
+      if (["price", "discount_price", "discount_percentage", "commission_rate"].includes(field)) {
+        updates[field] = value ? parseFloat(value) : null;
+      }
+      // Handle integer fields
+      else if (["stock_quantity", "low_stock_threshold"].includes(field)) {
+        updates[field] = value ? parseInt(value) : null;
+      }
+      // Handle string fields that can be null
+      else if (["barcode", "short_description", "description", "sub_category_id", "expiry_date"].includes(field)) {
+        updates[field] = value || null;
+      }
+      // Handle other fields
+      else {
+        updates[field] = value;
+      }
+    });
+
+    updateProduct.mutate(
+      { productId:productId, updates },
+      {
+        onSuccess: () => {
+          toast.success("Product updated successfully!");
+          setHasChanges(false);
+          setChangedFields(new Set());
+          router.push(`/admin/products/${productId}`);
+        },
+        onError: (error: any) => {
+          toast.error(`Failed to update product: ${error.message}`);
+        },
+      }
+    );
   };
 
   const handleDiscard = () => {
@@ -144,19 +181,27 @@ export default function EditProductPage({ params }) {
           "You have unsaved changes. Are you sure you want to discard them?"
         )
       ) {
-        router.push(`/admin/products/${formData.id}`);
+        router.push(`/admin/products/${id}`);
       }
     } else {
-      router.push(`/admin/products/${formData.id}`);
+      router.push(`/admin/products/${id}`);
     }
   };
+
+  if (isLoadingProduct || !formData) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-green-50 to-emerald-50 p-8 flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-green-50 to-emerald-50 p-8">
       <div className="max-w-7xl mx-auto space-y-6">
         {/* Header */}
         <div className="flex items-center gap-4">
-          <Link href={`/admin/products/${formData.id}`}>
+          <Link href={`/admin/products/${productId}`}>
             <Button variant="ghost" size="icon">
               <ArrowLeft className="w-5 h-5" />
             </Button>
@@ -165,7 +210,7 @@ export default function EditProductPage({ params }) {
             <h1 className="text-4xl font-bold bg-gradient-to-r from-slate-900 via-green-900 to-emerald-900 bg-clip-text text-transparent">
               Edit Product
             </h1>
-            <p className="text-slate-600 mt-2">{formData.name}</p>
+            <p className="text-slate-600 mt-2">{product?.name}</p>
           </div>
         </div>
 
@@ -248,38 +293,53 @@ export default function EditProductPage({ params }) {
                     onChange={(e) => handleFieldChange("sku", e.target.value)}
                     placeholder="SKU001"
                     required
+                    disabled
+                    className="bg-slate-100"
                   />
+                  <p className="text-xs text-slate-500">SKU cannot be changed</p>
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="barcode">Barcode</Label>
+                  <Label htmlFor="barcode">
+                    Barcode
+                    {changedFields.has("barcode") && (
+                      <Badge variant="outline" className="ml-2 text-xs">
+                        Modified
+                      </Badge>
+                    )}
+                  </Label>
                   <Input
                     id="barcode"
                     value={formData.barcode}
                     onChange={(e) => handleFieldChange("barcode", e.target.value)}
                     placeholder="8901234567890"
+                    className={
+                      changedFields.has("barcode")
+                        ? "border-amber-300 bg-amber-50"
+                        : ""
+                    }
                   />
                 </div>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="shortDescription">
+                <Label htmlFor="short_description">
                   Short Description
-                  {changedFields.has("shortDescription") && (
+                  {changedFields.has("short_description") && (
                     <Badge variant="outline" className="ml-2 text-xs">
                       Modified
                     </Badge>
                   )}
                 </Label>
                 <Input
-                  id="shortDescription"
-                  value={formData.shortDescription}
+                  id="short_description"
+                  value={formData.short_description}
                   onChange={(e) =>
-                    handleFieldChange("shortDescription", e.target.value)
+                    handleFieldChange("short_description", e.target.value)
                   }
                   placeholder="Brief product description"
                   className={
-                    changedFields.has("shortDescription")
+                    changedFields.has("short_description")
                       ? "border-amber-300 bg-amber-50"
                       : ""
                   }
@@ -287,24 +347,24 @@ export default function EditProductPage({ params }) {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="fullDescription">
+                <Label htmlFor="description">
                   Full Description
-                  {changedFields.has("fullDescription") && (
+                  {changedFields.has("description") && (
                     <Badge variant="outline" className="ml-2 text-xs">
                       Modified
                     </Badge>
                   )}
                 </Label>
                 <Textarea
-                  id="fullDescription"
-                  value={formData.fullDescription}
+                  id="description"
+                  value={formData.description}
                   onChange={(e) =>
-                    handleFieldChange("fullDescription", e.target.value)
+                    handleFieldChange("description", e.target.value)
                   }
                   placeholder="Detailed product description"
                   rows={4}
                   className={
-                    changedFields.has("fullDescription")
+                    changedFields.has("description")
                       ? "border-amber-300 bg-amber-50"
                       : ""
                   }
@@ -321,77 +381,87 @@ export default function EditProductPage({ params }) {
             <CardContent className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="category">Category *</Label>
-                  <Select
-                    value={formData.category}
-                    onValueChange={handleCategoryChange}
-                  >
-                    <SelectTrigger id="category">
-                      <SelectValue placeholder="Select category" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {categories.map((cat) => (
-                        <SelectItem key={cat.value} value={cat.value}>
-                          {cat.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="subcategory">Subcategory *</Label>
-                  <Select
-                    value={formData.subcategory}
-                    onValueChange={(value) =>
-                      handleFieldChange("subcategory", value)
-                    }
-                    disabled={!selectedCategory}
-                  >
-                    <SelectTrigger id="subcategory">
-                      <SelectValue placeholder="Select subcategory" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {selectedCategory?.subcategories.map((sub) => (
-                        <SelectItem key={sub} value={sub}>
-                          {sub}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="vendorId">
-                    Vendor *
-                    {changedFields.has("vendorId") && (
+                  <Label htmlFor="category">
+                    Category *
+                    {changedFields.has("category_id") && (
                       <Badge variant="outline" className="ml-2 text-xs">
                         Modified
                       </Badge>
                     )}
                   </Label>
                   <Select
-                    value={formData.vendorId}
-                    onValueChange={(value) => handleFieldChange("vendorId", value)}
+                    value={formData.category_id}
+                    onValueChange={handleCategoryChange}
                   >
                     <SelectTrigger
-                      id="vendorId"
+                      id="category"
                       className={
-                        changedFields.has("vendorId")
+                        changedFields.has("category_id")
                           ? "border-amber-300 bg-amber-50"
                           : ""
                       }
                     >
-                      <SelectValue placeholder="Select vendor" />
+                      <SelectValue placeholder="Select category" />
                     </SelectTrigger>
                     <SelectContent>
-                      {vendors.map((vendor) => (
-                        <SelectItem key={vendor.value} value={vendor.value}>
-                          {vendor.label}
+                      {categories?.map((cat) => (
+                        <SelectItem key={cat.id} value={cat.id}>
+                          {cat.name}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="subcategory">
+                    Subcategory
+                    {changedFields.has("sub_category_id") && (
+                      <Badge variant="outline" className="ml-2 text-xs">
+                        Modified
+                      </Badge>
+                    )}
+                  </Label>
+                  <Select
+                    value={formData.sub_category_id}
+                    onValueChange={(value) =>
+                      handleFieldChange("sub_category_id", value)
+                    }
+                    disabled={!formData.category_id}
+                  >
+                    <SelectTrigger
+                      id="subcategory"
+                      className={
+                        changedFields.has("sub_category_id")
+                          ? "border-amber-300 bg-amber-50"
+                          : ""
+                      }
+                    >
+                      <SelectValue placeholder="Select subcategory" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {subCategories?.map((sub) => (
+                        <SelectItem key={sub.id} value={sub.id}>
+                          {sub.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="vendorId">Vendor *</Label>
+                  <Input
+                    value={
+                      vendors?.find((v) => v.user_id === formData.vendor_id)
+                        ?.store_name || ""
+                    }
+                    disabled
+                    className="bg-slate-100"
+                  />
+                  <p className="text-xs text-slate-500">
+                    Vendor cannot be changed
+                  </p>
                 </div>
               </div>
             </CardContent>
@@ -401,7 +471,7 @@ export default function EditProductPage({ params }) {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle>Pricing</CardTitle>
-              {formData.discountPrice && (
+              {formData.discount_price && (
                 <Button
                   type="button"
                   variant="outline"
@@ -417,7 +487,14 @@ export default function EditProductPage({ params }) {
             <CardContent className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="price">Price (₹) *</Label>
+                  <Label htmlFor="price">
+                    Price (₹) *
+                    {changedFields.has("price") && (
+                      <Badge variant="outline" className="ml-2 text-xs">
+                        Modified
+                      </Badge>
+                    )}
+                  </Label>
                   <Input
                     id="price"
                     type="number"
@@ -426,20 +503,37 @@ export default function EditProductPage({ params }) {
                     onChange={(e) => handlePriceChange("price", e.target.value)}
                     placeholder="299.00"
                     required
+                    className={
+                      changedFields.has("price")
+                        ? "border-amber-300 bg-amber-50"
+                        : ""
+                    }
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="discountPrice">Discount Price (₹)</Label>
+                  <Label htmlFor="discount_price">
+                    Discount Price (₹)
+                    {changedFields.has("discount_price") && (
+                      <Badge variant="outline" className="ml-2 text-xs">
+                        Modified
+                      </Badge>
+                    )}
+                  </Label>
                   <Input
-                    id="discountPrice"
+                    id="discount_price"
                     type="number"
                     step="0.01"
-                    value={formData.discountPrice}
+                    value={formData.discount_price}
                     onChange={(e) =>
-                      handlePriceChange("discountPrice", e.target.value)
+                      handlePriceChange("discount_price", e.target.value)
                     }
                     placeholder="249.00"
+                    className={
+                      changedFields.has("discount_price")
+                        ? "border-amber-300 bg-amber-50"
+                        : ""
+                    }
                   />
                 </div>
 
@@ -447,29 +541,36 @@ export default function EditProductPage({ params }) {
                   <Label>Discount %</Label>
                   <div className="h-10 px-3 py-2 border border-slate-200 rounded-md bg-slate-50 flex items-center">
                     <span className="font-semibold text-emerald-600">
-                      {formData.discountPercentage || 0}%
+                      {formData.discount_percentage || 0}%
                     </span>
                   </div>
                 </div>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="unit">Unit *</Label>
-                <Select
+                <Label htmlFor="unit">
+                  Unit *
+                  {changedFields.has("unit") && (
+                    <Badge variant="outline" className="ml-2 text-xs">
+                      Modified
+                    </Badge>
+                  )}
+                </Label>
+                <Input
+                  id="unit"
                   value={formData.unit}
-                  onValueChange={(value) => handleFieldChange("unit", value)}
-                >
-                  <SelectTrigger id="unit" className="w-full md:w-[200px]">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="kg">Kilogram (kg)</SelectItem>
-                    <SelectItem value="g">Gram (g)</SelectItem>
-                    <SelectItem value="ltr">Liter (ltr)</SelectItem>
-                    <SelectItem value="ml">Milliliter (ml)</SelectItem>
-                    <SelectItem value="pcs">Pieces (pcs)</SelectItem>
-                  </SelectContent>
-                </Select>
+                  onChange={(e) => handleFieldChange("unit", e.target.value)}
+                  placeholder="e.g., 1kg, 500g, 1ltr, 5pcs"
+                  required
+                  className={
+                    changedFields.has("unit")
+                      ? "border-amber-300 bg-amber-50"
+                      : ""
+                  }
+                />
+                <p className="text-xs text-slate-500">
+                  Enter unit with value (e.g., 1kg, 500g, 2ltr, 10pcs)
+                </p>
               </div>
             </CardContent>
           </Card>
@@ -482,29 +583,53 @@ export default function EditProductPage({ params }) {
             <CardContent className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="stockQuantity">Stock Quantity *</Label>
+                  <Label htmlFor="stock_quantity">
+                    Stock Quantity *
+                    {changedFields.has("stock_quantity") && (
+                      <Badge variant="outline" className="ml-2 text-xs">
+                        Modified
+                      </Badge>
+                    )}
+                  </Label>
                   <Input
-                    id="stockQuantity"
+                    id="stock_quantity"
                     type="number"
-                    value={formData.stockQuantity}
+                    value={formData.stock_quantity}
                     onChange={(e) =>
-                      handleFieldChange("stockQuantity", e.target.value)
+                      handleFieldChange("stock_quantity", e.target.value)
                     }
                     placeholder="100"
                     required
+                    className={
+                      changedFields.has("stock_quantity")
+                        ? "border-amber-300 bg-amber-50"
+                        : ""
+                    }
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="lowStockThreshold">Low Stock Threshold</Label>
+                  <Label htmlFor="low_stock_threshold">
+                    Low Stock Threshold
+                    {changedFields.has("low_stock_threshold") && (
+                      <Badge variant="outline" className="ml-2 text-xs">
+                        Modified
+                      </Badge>
+                    )}
+                  </Label>
                   <Input
-                    id="lowStockThreshold"
+                    id="low_stock_threshold"
                     type="number"
-                    value={formData.lowStockThreshold}
+                    value={formData.low_stock_threshold}
                     onChange={(e) =>
-                      handleFieldChange("lowStockThreshold", e.target.value)
+                      handleFieldChange("low_stock_threshold", e.target.value)
                     }
                     placeholder="10"
+                    className={
+                      changedFields.has("low_stock_threshold")
+                        ? "border-amber-300 bg-amber-50"
+                        : ""
+                    }
                   />
                 </div>
               </div>
@@ -519,14 +644,28 @@ export default function EditProductPage({ params }) {
             <CardContent className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="commissionType">Commission Type *</Label>
+                  <Label htmlFor="commission_type">
+                    Commission Type *
+                    {changedFields.has("commission_type") && (
+                      <Badge variant="outline" className="ml-2 text-xs">
+                        Modified
+                      </Badge>
+                    )}
+                  </Label>
                   <Select
-                    value={formData.commissionType}
+                    value={formData.commission_type}
                     onValueChange={(value) =>
-                      handleFieldChange("commissionType", value)
+                      handleFieldChange("commission_type", value)
                     }
                   >
-                    <SelectTrigger id="commissionType">
+                    <SelectTrigger
+                      id="commission_type"
+                      className={
+                        changedFields.has("commission_type")
+                          ? "border-amber-300 bg-amber-50"
+                          : ""
+                      }
+                    >
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -540,18 +679,30 @@ export default function EditProductPage({ params }) {
                   </Select>
                 </div>
 
-                {formData.commissionType === "custom" && (
+                {formData.commission_type === "custom" && (
                   <div className="space-y-2">
-                    <Label htmlFor="commissionRate">Commission Rate (%)</Label>
+                    <Label htmlFor="commission_rate">
+                      Commission Rate (%)
+                      {changedFields.has("commission_rate") && (
+                        <Badge variant="outline" className="ml-2 text-xs">
+                          Modified
+                        </Badge>
+                      )}
+                    </Label>
                     <Input
-                      id="commissionRate"
+                      id="commission_rate"
                       type="number"
                       step="0.01"
-                      value={formData.commissionRate}
+                      value={formData.commission_rate}
                       onChange={(e) =>
-                        handleFieldChange("commissionRate", e.target.value)
+                        handleFieldChange("commission_rate", e.target.value)
                       }
                       placeholder="15"
+                      className={
+                        changedFields.has("commission_rate")
+                          ? "border-amber-300 bg-amber-50"
+                          : ""
+                      }
                     />
                   </div>
                 )}
@@ -568,7 +719,7 @@ export default function EditProductPage({ params }) {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="flex items-center justify-between p-4 border rounded-lg">
                   <div>
-                    <Label htmlFor="isAvailable" className="font-medium">
+                    <Label htmlFor="is_available" className="font-medium">
                       Available
                     </Label>
                     <p className="text-sm text-slate-500">
@@ -576,90 +727,90 @@ export default function EditProductPage({ params }) {
                     </p>
                   </div>
                   <Switch
-                    id="isAvailable"
-                    checked={formData.isAvailable}
+                    id="is_available"
+                    checked={formData.is_available}
                     onCheckedChange={(checked) =>
-                      handleFieldChange("isAvailable", checked)
+                      handleFieldChange("is_available", checked)
                     }
                   />
                 </div>
 
                 <div className="flex items-center justify-between p-4 border rounded-lg">
                   <div>
-                    <Label htmlFor="isFeatured" className="font-medium">
+                    <Label htmlFor="is_featured" className="font-medium">
                       Featured
                     </Label>
                     <p className="text-sm text-slate-500">Show in featured section</p>
                   </div>
                   <Switch
-                    id="isFeatured"
-                    checked={formData.isFeatured}
+                    id="is_featured"
+                    checked={formData.is_featured}
                     onCheckedChange={(checked) =>
-                      handleFieldChange("isFeatured", checked)
+                      handleFieldChange("is_featured", checked)
                     }
                   />
                 </div>
 
                 <div className="flex items-center justify-between p-4 border rounded-lg">
                   <div>
-                    <Label htmlFor="isBestSeller" className="font-medium">
+                    <Label htmlFor="is_best_seller" className="font-medium">
                       Best Seller
                     </Label>
                     <p className="text-sm text-slate-500">Mark as best seller</p>
                   </div>
                   <Switch
-                    id="isBestSeller"
-                    checked={formData.isBestSeller}
+                    id="is_best_seller"
+                    checked={formData.is_best_seller}
                     onCheckedChange={(checked) =>
-                      handleFieldChange("isBestSeller", checked)
+                      handleFieldChange("is_best_seller", checked)
                     }
                   />
                 </div>
 
                 <div className="flex items-center justify-between p-4 border rounded-lg">
                   <div>
-                    <Label htmlFor="isTrending" className="font-medium">
+                    <Label htmlFor="is_trending" className="font-medium">
                       Trending
                     </Label>
                     <p className="text-sm text-slate-500">Show in trending items</p>
                   </div>
                   <Switch
-                    id="isTrending"
-                    checked={formData.isTrending}
+                    id="is_trending"
+                    checked={formData.is_trending}
                     onCheckedChange={(checked) =>
-                      handleFieldChange("isTrending", checked)
+                      handleFieldChange("is_trending", checked)
                     }
                   />
                 </div>
 
                 <div className="flex items-center justify-between p-4 border rounded-lg">
                   <div>
-                    <Label htmlFor="isOrganic" className="font-medium">
+                    <Label htmlFor="is_organic" className="font-medium">
                       Organic
                     </Label>
                     <p className="text-sm text-slate-500">Certified organic product</p>
                   </div>
                   <Switch
-                    id="isOrganic"
-                    checked={formData.isOrganic}
+                    id="is_organic"
+                    checked={formData.is_organic}
                     onCheckedChange={(checked) =>
-                      handleFieldChange("isOrganic", checked)
+                      handleFieldChange("is_organic", checked)
                     }
                   />
                 </div>
 
                 <div className="flex items-center justify-between p-4 border rounded-lg">
                   <div>
-                    <Label htmlFor="isVeg" className="font-medium">
+                    <Label htmlFor="is_veg" className="font-medium">
                       Vegetarian
                     </Label>
                     <p className="text-sm text-slate-500">Vegetarian product</p>
                   </div>
                   <Switch
-                    id="isVeg"
-                    checked={formData.isVeg}
+                    id="is_veg"
+                    checked={formData.is_veg}
                     onCheckedChange={(checked) =>
-                      handleFieldChange("isVeg", checked)
+                      handleFieldChange("is_veg", checked)
                     }
                   />
                 </div>
@@ -674,38 +825,27 @@ export default function EditProductPage({ params }) {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="expiryDate">Expiry Date (Optional)</Label>
+                <Label htmlFor="expiry_date">
+                  Expiry/Shelf Life (Optional)
+                  {changedFields.has("expiry_date") && (
+                    <Badge variant="outline" className="ml-2 text-xs">
+                      Modified
+                    </Badge>
+                  )}
+                </Label>
                 <Input
-                  id="expiryDate"
-                  type="date"
-                  value={formData.expiryDate}
-                  onChange={(e) => handleFieldChange("expiryDate", e.target.value)}
-                  className="w-full md:w-[300px]"
+                  id="expiry_date"
+                  value={formData.expiry_date}
+                  onChange={(e) => handleFieldChange("expiry_date", e.target.value)}
+                  placeholder="e.g., 5 days, 2 weeks, 6 months, 1 year"
+                  className={`w-full md:w-[300px] ${changedFields.has("expiry_date")
+                      ? "border-amber-300 bg-amber-50"
+                      : ""
+                    }`}
                 />
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Product Status Control */}
-          <Card className="border-red-200 bg-red-50">
-            <CardHeader>
-              <CardTitle className="text-red-900">Danger Zone</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center justify-between">
-                <div>
-                  <h4 className="font-semibold text-red-900">Deactivate Product</h4>
-                  <p className="text-sm text-red-700 mt-1">
-                    This will make the product unavailable for customers
-                  </p>
-                </div>
-                <Button
-                  type="button"
-                  variant="destructive"
-                  onClick={() => handleFieldChange("isAvailable", false)}
-                >
-                  Deactivate
-                </Button>
+                <p className="text-xs text-slate-500">
+                  Enter shelf life duration (e.g., 5 days, 30 days, 6 months)
+                </p>
               </div>
             </CardContent>
           </Card>
@@ -719,6 +859,7 @@ export default function EditProductPage({ params }) {
                   variant="outline"
                   onClick={handleDiscard}
                   className="gap-2"
+                  disabled={updateProduct.isPending}
                 >
                   <X className="w-4 h-4" />
                   Discard
@@ -726,10 +867,19 @@ export default function EditProductPage({ params }) {
                 <Button
                   type="submit"
                   className="gap-2 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700"
-                  disabled={!hasChanges}
+                  disabled={!hasChanges || updateProduct.isPending}
                 >
-                  <Save className="w-4 h-4" />
-                  Save Changes
+                  {updateProduct.isPending ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-4 h-4" />
+                      Save Changes ({changedFields.size})
+                    </>
+                  )}
                 </Button>
               </div>
             </CardContent>

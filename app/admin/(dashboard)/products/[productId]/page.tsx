@@ -1,3 +1,4 @@
+// app/admin/products/[id]/page.tsx
 "use client";
 
 import { Button } from "@/components/ui/button";
@@ -12,59 +13,20 @@ import {
   BarChart3,
   Tag,
   Leaf,
+  Loader2,
+  Image as ImageIcon,
 } from "lucide-react";
 import Link from "next/link";
+import Image from "next/image";
+import { useProduct, useProductImages } from "@/hooks";
+import { useParams } from "next/navigation";
 
-// Mock Product Data
-const mockProduct = {
-  id: "PROD001",
-  name: "Organic Basmati Rice",
-  slug: "organic-basmati-rice",
-  sku: "SKU001",
-  barcode: "8901234567890",
-  category: "Grains & Rice",
-  subcategory: "Rice",
-  price: 299.00,
-  discountPrice: 249.00,
-  discountPercentage: 17,
-  unit: "kg",
-  stockQuantity: 150,
-  lowStockThreshold: 20,
-  stockStatus: "in_stock",
-  commissionType: "category",
-  commissionRate: 12,
-  isAvailable: true,
-  isFeatured: true,
-  isBestSeller: true,
-  isTrending: false,
-  isOrganic: true,
-  isVeg: true,
-  rating: 4.5,
-  reviewCount: 234,
-  vendorId: "V001",
-  vendorName: "Organic Farms Ltd",
-  shortDescription: "Premium quality aged basmati rice from organic farms",
-  fullDescription:
-    "Our Organic Basmati Rice is sourced from certified organic farms in the foothills of the Himalayas. Each grain is aged for a minimum of 2 years to enhance flavor and aroma. Perfect for biryanis, pulaos, and everyday meals.",
-  expiryDate: "2025-12-31",
-  createdAt: "2024-01-15T10:30:00",
-  updatedAt: "2024-02-10T14:20:00",
-  images: [
-    "/products/rice-1.jpg",
-    "/products/rice-2.jpg",
-    "/products/rice-3.jpg",
-  ],
-  attributes: {
-    "Grain Type": "Long Grain",
-    "Cooking Time": "15-20 minutes",
-    Origin: "India",
-    Certification: "USDA Organic",
-    "Shelf Life": "12 months",
-  },
-};
+export default function ProductDetailPage( ) {
+  const { productId:id } = useParams();
+  const { data: product, isLoading } = useProduct(id);
+  const { data: images } = useProductImages(id);
 
-export default function ProductDetailPage({ params }) {
-  const formatCurrency = (amount) => {
+  const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("en-IN", {
       style: "currency",
       currency: "INR",
@@ -72,13 +34,35 @@ export default function ProductDetailPage({ params }) {
     }).format(amount);
   };
 
-  const formatDate = (dateString) => {
+  const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString("en-IN", {
       day: "2-digit",
       month: "short",
       year: "numeric",
     });
   };
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-green-50 to-emerald-50 p-8 flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (!product) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-green-50 to-emerald-50 p-8">
+        <div className="max-w-7xl mx-auto">
+          <Card>
+            <CardContent className="pt-6">
+              <p className="text-center text-slate-600">Product not found</p>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-green-50 to-emerald-50 p-8">
@@ -94,22 +78,22 @@ export default function ProductDetailPage({ params }) {
             <div>
               <div className="flex items-center gap-3">
                 <h1 className="text-4xl font-bold bg-gradient-to-r from-slate-900 via-green-900 to-emerald-900 bg-clip-text text-transparent">
-                  {mockProduct.name}
+                  {product.name}
                 </h1>
                 <Badge
                   className={
-                    mockProduct.isAvailable
+                    product.is_available
                       ? "bg-emerald-100 text-emerald-700"
                       : "bg-red-100 text-red-700"
                   }
                 >
-                  {mockProduct.isAvailable ? "Available" : "Unavailable"}
+                  {product.is_available ? "Available" : "Unavailable"}
                 </Badge>
               </div>
-              <p className="text-slate-600 mt-2">Product ID: {mockProduct.id}</p>
+              <p className="text-slate-600 mt-2">Product ID: {product.id}</p>
             </div>
           </div>
-          <Link href={`/admin/products/${mockProduct.id}/edit`}>
+          <Link href={`/admin/products/${id}/edit`}>
             <Button className="gap-2 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700">
               <Edit className="w-4 h-4" />
               Edit Product
@@ -124,27 +108,43 @@ export default function ProductDetailPage({ params }) {
             {/* Product Images */}
             <Card>
               <CardHeader>
-                <CardTitle>Product Images</CardTitle>
+                <div className="flex items-center justify-between">
+                  <CardTitle>Product Images</CardTitle>
+                  <Link href={`/admin/products/${id}/images`}>
+                    <Button variant="outline" size="sm">
+                      Manage Images
+                    </Button>
+                  </Link>
+                </div>
               </CardHeader>
               <CardContent>
-                <div className="grid grid-cols-3 gap-4">
-                  {mockProduct.images.map((img, idx) => (
-                    <div
-                      key={idx}
-                      className="aspect-square rounded-lg bg-slate-200 flex items-center justify-center overflow-hidden border-2 border-slate-300"
-                    >
-                      <Package className="w-12 h-12 text-slate-400" />
-                    </div>
-                  ))}
-                </div>
-                <Link
-                  href={`/admin/products/${mockProduct.id}/images`}
-                  className="mt-4 inline-block"
-                >
-                  <Button variant="outline" size="sm">
-                    Manage Images
-                  </Button>
-                </Link>
+                {images && images.length > 0 ? (
+                  <div className="grid grid-cols-3 gap-4">
+                    {images.slice(0, 6).map((img) => (
+                      <div
+                        key={img.id}
+                        className="relative aspect-square rounded-lg bg-slate-200 overflow-hidden border-2 border-slate-300"
+                      >
+                        <Image
+                          src={img.image_url}
+                          alt={img.alt_text || product.name}
+                          fill
+                          className="object-cover"
+                        />
+                        {img.is_primary && (
+                          <Badge className="absolute top-2 right-2 bg-yellow-400 text-yellow-900">
+                            Primary
+                          </Badge>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-8">
+                    <ImageIcon className="w-12 h-12 text-slate-300 mx-auto mb-2" />
+                    <p className="text-slate-500">No images uploaded</p>
+                  </div>
+                )}
               </CardContent>
             </Card>
 
@@ -154,40 +154,53 @@ export default function ProductDetailPage({ params }) {
                 <CardTitle>Description</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div>
-                  <h4 className="font-semibold text-sm text-slate-600 mb-2">
-                    Short Description
-                  </h4>
-                  <p className="text-slate-700">{mockProduct.shortDescription}</p>
-                </div>
-                <div>
-                  <h4 className="font-semibold text-sm text-slate-600 mb-2">
-                    Full Description
-                  </h4>
-                  <p className="text-slate-700">{mockProduct.fullDescription}</p>
-                </div>
+                {product.short_description && (
+                  <div>
+                    <h4 className="font-semibold text-sm text-slate-600 mb-2">
+                      Short Description
+                    </h4>
+                    <p className="text-slate-700">{product.short_description}</p>
+                  </div>
+                )}
+                {product.description && (
+                  <div>
+                    <h4 className="font-semibold text-sm text-slate-600 mb-2">
+                      Full Description
+                    </h4>
+                    <p className="text-slate-700 whitespace-pre-wrap">
+                      {product.description}
+                    </p>
+                  </div>
+                )}
+                {!product.short_description && !product.description && (
+                  <p className="text-slate-500 italic">No description available</p>
+                )}
               </CardContent>
             </Card>
 
             {/* Attributes */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Product Attributes</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {Object.entries(mockProduct.attributes).map(([key, value]) => (
-                    <div
-                      key={key}
-                      className="flex justify-between py-2 border-b last:border-b-0"
-                    >
-                      <span className="font-medium text-slate-600">{key}</span>
-                      <span className="text-slate-900">{value}</span>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
+            {product.attributes && Object.keys(product.attributes).length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Product Attributes</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    {Object.entries(product.attributes as Record<string, any>).map(
+                      ([key, value]) => (
+                        <div
+                          key={key}
+                          className="flex justify-between py-2 border-b last:border-b-0"
+                        >
+                          <span className="font-medium text-slate-600">{key}</span>
+                          <span className="text-slate-900">{String(value)}</span>
+                        </div>
+                      )
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
           </div>
 
           {/* Right Column */}
@@ -204,23 +217,30 @@ export default function ProductDetailPage({ params }) {
                 <div>
                   <div className="text-sm text-slate-600">Current Price</div>
                   <div className="text-3xl font-bold text-emerald-600 mt-1">
-                    {formatCurrency(mockProduct.discountPrice || mockProduct.price)}
+                    {formatCurrency(
+                      parseFloat(product.discount_price?.toString() || "0") ||
+                        parseFloat(product.price?.toString() || "0")
+                    )}
                   </div>
                 </div>
-                {mockProduct.discountPrice && (
+                {product.discount_price && parseFloat(product.discount_price.toString()) > 0 && (
                   <>
                     <div>
                       <div className="text-sm text-slate-600">Original Price</div>
                       <div className="text-xl text-slate-500 line-through mt-1">
-                        {formatCurrency(mockProduct.price)}
+                        {formatCurrency(parseFloat(product.price?.toString() || "0"))}
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
                       <Badge className="bg-red-100 text-red-700">
-                        {mockProduct.discountPercentage}% OFF
+                        {product.discount_percentage}% OFF
                       </Badge>
                       <span className="text-sm text-slate-600">
-                        Save {formatCurrency(mockProduct.price - mockProduct.discountPrice)}
+                        Save{" "}
+                        {formatCurrency(
+                          parseFloat(product.price?.toString() || "0") -
+                            parseFloat(product.discount_price.toString())
+                        )}
                       </span>
                     </div>
                   </>
@@ -228,7 +248,7 @@ export default function ProductDetailPage({ params }) {
                 <div className="pt-2 border-t">
                   <div className="text-sm text-slate-600">Unit</div>
                   <div className="text-lg font-medium mt-1">
-                    {mockProduct.unit.toUpperCase()}
+                    {product.unit || "N/A"}
                   </div>
                 </div>
               </CardContent>
@@ -246,7 +266,7 @@ export default function ProductDetailPage({ params }) {
                 <div>
                   <div className="text-sm text-slate-600">Stock Quantity</div>
                   <div className="text-2xl font-bold mt-1">
-                    {mockProduct.stockQuantity}
+                    {product.stock_quantity}
                   </div>
                 </div>
                 <div>
@@ -254,16 +274,16 @@ export default function ProductDetailPage({ params }) {
                   <div className="mt-2">
                     <Badge
                       className={
-                        mockProduct.stockStatus === "in_stock"
+                        product.stock_status === "in_stock"
                           ? "bg-emerald-100 text-emerald-700"
-                          : mockProduct.stockStatus === "low_stock"
+                          : product.stock_status === "low_stock"
                           ? "bg-amber-100 text-amber-700"
                           : "bg-red-100 text-red-700"
                       }
                     >
-                      {mockProduct.stockStatus === "in_stock"
+                      {product.stock_status === "in_stock"
                         ? "In Stock"
-                        : mockProduct.stockStatus === "low_stock"
+                        : product.stock_status === "low_stock"
                         ? "Low Stock"
                         : "Out of Stock"}
                     </Badge>
@@ -272,7 +292,7 @@ export default function ProductDetailPage({ params }) {
                 <div className="pt-2 border-t">
                   <div className="text-sm text-slate-600">Low Stock Threshold</div>
                   <div className="text-lg font-medium mt-1">
-                    {mockProduct.lowStockThreshold}
+                    {product.low_stock_threshold}
                   </div>
                 </div>
               </CardContent>
@@ -289,12 +309,16 @@ export default function ProductDetailPage({ params }) {
               <CardContent className="space-y-3">
                 <div>
                   <div className="text-sm text-slate-600">Category</div>
-                  <div className="font-medium mt-1">{mockProduct.category}</div>
+                  <div className="font-medium mt-1">
+                    {product.category?.name || "N/A"}
+                  </div>
                 </div>
-                <div>
-                  <div className="text-sm text-slate-600">Subcategory</div>
-                  <div className="font-medium mt-1">{mockProduct.subcategory}</div>
-                </div>
+                {product.sub_category && (
+                  <div>
+                    <div className="text-sm text-slate-600">Subcategory</div>
+                    <div className="font-medium mt-1">{product.sub_category.name}</div>
+                  </div>
+                )}
               </CardContent>
             </Card>
 
@@ -307,13 +331,13 @@ export default function ProductDetailPage({ params }) {
                 <div>
                   <div className="text-sm text-slate-600">Commission Type</div>
                   <Badge variant="outline" className="mt-1">
-                    {mockProduct.commissionType}
+                    {product.commission_type}
                   </Badge>
                 </div>
                 <div>
                   <div className="text-sm text-slate-600">Commission Rate</div>
                   <div className="text-2xl font-bold text-blue-600 mt-1">
-                    {mockProduct.commissionRate}%
+                    {product.commission_rate}%
                   </div>
                 </div>
               </CardContent>
@@ -330,11 +354,13 @@ export default function ProductDetailPage({ params }) {
               <CardContent className="space-y-3">
                 <div className="flex items-center gap-2">
                   <Star className="w-6 h-6 fill-yellow-400 text-yellow-400" />
-                  <span className="text-3xl font-bold">{mockProduct.rating}</span>
+                  <span className="text-3xl font-bold">
+                    {parseFloat(product.rating?.toString() || "0").toFixed(1)}
+                  </span>
                   <span className="text-slate-600">/ 5.0</span>
                 </div>
                 <div className="text-sm text-slate-600">
-                  Based on {mockProduct.reviewCount} reviews
+                  Based on {product.review_count} reviews
                 </div>
               </CardContent>
             </Card>
@@ -349,25 +375,32 @@ export default function ProductDetailPage({ params }) {
               </CardHeader>
               <CardContent>
                 <div className="flex flex-wrap gap-2">
-                  {mockProduct.isOrganic && (
+                  {product.is_organic && (
                     <Badge className="bg-green-100 text-green-700">Organic</Badge>
                   )}
-                  {mockProduct.isVeg && (
+                  {product.is_veg && (
                     <Badge className="bg-emerald-100 text-emerald-700">
                       Vegetarian
                     </Badge>
                   )}
-                  {mockProduct.isFeatured && (
+                  {product.is_featured && (
                     <Badge className="bg-blue-100 text-blue-700">Featured</Badge>
                   )}
-                  {mockProduct.isBestSeller && (
+                  {product.is_best_seller && (
                     <Badge className="bg-purple-100 text-purple-700">
                       Best Seller
                     </Badge>
                   )}
-                  {mockProduct.isTrending && (
+                  {product.is_trending && (
                     <Badge className="bg-pink-100 text-pink-700">Trending</Badge>
                   )}
+                  {!product.is_organic &&
+                    !product.is_veg &&
+                    !product.is_featured &&
+                    !product.is_best_seller &&
+                    !product.is_trending && (
+                      <span className="text-sm text-slate-500">No tags</span>
+                    )}
                 </div>
               </CardContent>
             </Card>
@@ -383,35 +416,34 @@ export default function ProductDetailPage({ params }) {
               <CardContent className="space-y-3">
                 <div>
                   <div className="text-sm text-slate-600">SKU</div>
-                  <div className="font-mono mt-1">{mockProduct.sku}</div>
+                  <div className="font-mono mt-1">{product.sku}</div>
                 </div>
-                <div>
-                  <div className="text-sm text-slate-600">Barcode</div>
-                  <div className="font-mono mt-1">{mockProduct.barcode}</div>
-                </div>
+                {product.barcode && (
+                  <div>
+                    <div className="text-sm text-slate-600">Barcode</div>
+                    <div className="font-mono mt-1">{product.barcode}</div>
+                  </div>
+                )}
                 <div>
                   <div className="text-sm text-slate-600">Vendor</div>
                   <div className="font-medium mt-1">
-                    {mockProduct.vendorName}
-                    <span className="text-xs text-slate-500 ml-2">
-                      ({mockProduct.vendorId})
-                    </span>
+                    {product.vendor?.store_name || "N/A"}
                   </div>
                 </div>
-                {mockProduct.expiryDate && (
+                {product.expiry_date && (
                   <div>
-                    <div className="text-sm text-slate-600">Expiry Date</div>
+                    <div className="text-sm text-slate-600">Shelf Life</div>
                     <div className="font-medium mt-1">
-                      {formatDate(mockProduct.expiryDate)}
+                      {product.expiry_date}
                     </div>
                   </div>
                 )}
                 <div className="pt-3 border-t space-y-2">
                   <div className="text-xs text-slate-500">
-                    Created: {formatDate(mockProduct.createdAt)}
+                    Created: {formatDate(product.created_at || "")}
                   </div>
                   <div className="text-xs text-slate-500">
-                    Updated: {formatDate(mockProduct.updatedAt)}
+                    Updated: {formatDate(product.updated_at || "")}
                   </div>
                 </div>
               </CardContent>

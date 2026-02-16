@@ -15,6 +15,7 @@ import {
   LowStockProduct,
   UpdateProductStockArgs,
 } from '@/types/supabase';
+import { ProductImageInput, uploadAndSaveProductImages } from '@/lib/upload';
 
 // ============================================================================
 // QUERIES
@@ -258,31 +259,85 @@ export function useFeaturedProducts(limit: number = 10) {
 /**
  * Create a new product
  */
+
 export function useCreateProduct() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (product: ProductInsert) => {
-      const { data, error } = await supabase
+    mutationFn: async ({
+      product,
+      productImages,
+    }: {
+      product: ProductInsert;
+      productImages: ProductImageInput[];
+    }) => {
+      if (!Array.isArray(productImages) || productImages.length === 0) {
+        throw new Error('At least one product image is required');
+      }
+
+      // 1️⃣ Insert product first
+      const { data: insertedProduct, error: insertError } = await supabase
         .from('products')
         .insert(product)
         .select('*')
         .single();
 
-      if (error) throw error;
-      return data;
+      if (insertError) throw insertError;
+
+      // 2️⃣ Call PostgreSQL function using RPC
+      const { data: commissionRate, error: rpcError } = await supabase.rpc(
+        'calculate_product_commission',
+        { p_product_id: insertedProduct.id }
+      );
+
+      if (rpcError) throw rpcError;
+
+      // 3️⃣ Upload images to storage + insert product_images rows
+      const uploadedUrls = await uploadAndSaveProductImages(
+        product.vendor_id,
+        product.sku,
+        insertedProduct.id,
+        productImages
+      );
+
+      // 4️⃣ Resolve primary image URL
+      const primaryIndex = productImages.findIndex((img) => img.isPrimary);
+      const primaryImageUrl = uploadedUrls[primaryIndex !== -1 ? primaryIndex : 0];
+
+      // 5️⃣ Update product with commission + primary image URL
+      const { data: updatedProduct, error: updateError } = await supabase
+        .from('products')
+        .update({
+          commission_rate: commissionRate,
+          image: primaryImageUrl,
+        })
+        .eq('id', insertedProduct.id)
+        .select('*')
+        .single();
+
+      if (updateError) throw updateError;
+
+      return updatedProduct;
     },
+
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.products.all });
+
       queryClient.invalidateQueries({
         queryKey: queryKeys.products.byVendor(data.vendor_id),
       });
+
       queryClient.invalidateQueries({
         queryKey: queryKeys.products.byCategory(data.category_id),
       });
     },
+
+    onError: (error: Error) => {
+      console.error('Product creation failed:', error.message);
+    },
   });
 }
+
 
 /**
  * Update product
@@ -298,28 +353,58 @@ export function useUpdateProduct() {
       productId: string;
       updates: ProductUpdate;
     }) => {
-      const { data, error } = await supabase
+      // 1️⃣ Update product first
+      const { data: updatedProduct, error: updateError } = await supabase
         .from('products')
         .update(updates)
         .eq('id', productId)
         .select('*')
         .single();
 
-      if (error) throw error;
-      return data;
+      if (updateError) throw updateError;
+
+      // 2️⃣ Recalculate commission via RPC
+      const { data: commissionRate, error: rpcError } = await supabase.rpc(
+        'calculate_product_commission',
+        {
+          p_product_id: productId,
+        }
+      );
+
+      if (rpcError) throw rpcError;
+
+      // 3️⃣ Update product with new commission rate
+      const { data: finalProduct, error: commissionUpdateError } =
+        await supabase
+          .from('products')
+          .update({ commission_rate: commissionRate })
+          .eq('id', productId)
+          .select('*')
+          .single();
+
+      if (commissionUpdateError) throw commissionUpdateError;
+
+      return finalProduct;
     },
+
     onSuccess: (data) => {
+      // Update detail cache
       queryClient.setQueryData(queryKeys.products.detail(data.id), data);
+
+      // Invalidate related lists
       queryClient.invalidateQueries({ queryKey: queryKeys.products.all });
+
       queryClient.invalidateQueries({
         queryKey: queryKeys.products.byVendor(data.vendor_id),
       });
+
       queryClient.invalidateQueries({
         queryKey: queryKeys.products.byCategory(data.category_id),
       });
     },
   });
 }
+
 
 /**
  * Delete product
@@ -453,6 +538,8 @@ export function useSetPrimaryProductImage() {
         .eq('id', imageId)
         .select('*')
         .single();
+
+      await supabase.from("products").update({ image: data?.image_url }).eq('id', productId)
 
       if (error) throw error;
       return data;
