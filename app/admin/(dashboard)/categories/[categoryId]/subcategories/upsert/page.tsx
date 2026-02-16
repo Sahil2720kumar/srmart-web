@@ -12,6 +12,8 @@ import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import Link from "next/link";
 import Image from "next/image";
+import { useCategory, useSubCategory, useCreateSubCategory, useUpdateSubCategory } from "@/hooks/products/useCategories";
+import { toast } from "sonner";
 
 interface FormData {
   name: string;
@@ -32,37 +34,19 @@ interface FormErrors {
   display_order?: string;
 }
 
-// Mock parent category
-const mockCategory = {
-  id: "cat_001",
-  name: "Vegetables & Fruits",
-  commission_rate: 8.00,
-};
-
-// Mock subcategory for edit mode
-const mockSubcategory = {
-  id: "sub_001",
-  category_id: "cat_001",
-  name: "Fresh Vegetables",
-  slug: "fresh-vegetables",
-  description: "Farm-fresh vegetables delivered daily",
-  image: "https://images.unsplash.com/photo-1540420773420-3366772f4999?w=500",
-  commission_rate: null as number | null,
-  display_order: 1,
-  is_active: true,
-  created_at: new Date().toISOString(),
-  updated_at: new Date().toISOString(),
-};
-
 export default function AddEditSubcategoryPage() {
   const router = useRouter();
   const params = useParams();
   const searchParams = useSearchParams();
-  const isEditMode = searchParams.get("subcategoryId");
+  
   const categoryId = params.categoryId as string;
+  const subcategoryId = searchParams.get("subcategoryId");
+  const isEditMode = !!subcategoryId;
   
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [imagePreview, setImagePreview] = useState<string>("");
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [removeImage, setRemoveImage] = useState(false);
   const [formData, setFormData] = useState<FormData>({
     name: "",
     slug: "",
@@ -75,24 +59,34 @@ export default function AddEditSubcategoryPage() {
   });
   const [errors, setErrors] = useState<FormErrors>({});
 
+  // Fetch category data
+  const { data: category, isLoading: categoryLoading } = useCategory(categoryId);
+  
+  // Fetch subcategory data (only in edit mode)
+  const { data: subcategoryData, isLoading: subcategoryLoading } = useSubCategory(subcategoryId || "");
+
+  // Mutations
+  const createSubCategoryMutation = useCreateSubCategory();
+  const updateSubCategoryMutation = useUpdateSubCategory();
+
+  // Prefill form in edit mode
   useEffect(() => {
-    if (isEditMode) {
-      // Prefill form with mock data in edit mode
+    if (isEditMode && subcategoryData) {
       setFormData({
-        name: mockSubcategory.name,
-        slug: mockSubcategory.slug,
-        description: mockSubcategory.description || "",
-        image: mockSubcategory.image || "",
-        commission_rate: mockSubcategory.commission_rate?.toString() || "",
-        use_custom_commission: mockSubcategory.commission_rate !== null,
-        display_order: mockSubcategory.display_order.toString(),
-        is_active: mockSubcategory.is_active,
+        name: subcategoryData.name,
+        slug: subcategoryData.slug,
+        description: subcategoryData.description || "",
+        image: subcategoryData.image || "",
+        commission_rate: subcategoryData.commission_rate?.toString() || "",
+        use_custom_commission: subcategoryData.commission_rate !== null && subcategoryData.commission_rate !== undefined,
+        display_order: subcategoryData.display_order?.toString() || "",
+        is_active: subcategoryData.is_active || false,
       });
-      if (mockSubcategory.image) {
-        setImagePreview(mockSubcategory.image);
+      if (subcategoryData.image) {
+        setImagePreview(subcategoryData.image);
       }
     }
-  }, [isEditMode]);
+  }, [isEditMode, subcategoryData]);
 
   const generateSlug = (name: string): string => {
     return name
@@ -148,24 +142,22 @@ export default function AddEditSubcategoryPage() {
       };
       reader.readAsDataURL(file);
 
-      // In a real app, upload to storage and get URL
-      // For now, we'll simulate an upload
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      // Mock uploaded URL
-      const uploadedUrl = `https://storage.example.com/subcategories/${file.name}`;
-      handleInputChange("image", uploadedUrl);
+      // Store file for upload
+      setImageFile(file);
+      setRemoveImage(false);
       
       // Clear error
       setErrors(prev => ({ ...prev, image: "" }));
     } catch (error) {
-      console.error("Error uploading image:", error);
-      setErrors(prev => ({ ...prev, image: "Failed to upload image" }));
+      console.error("Error processing image:", error);
+      setErrors(prev => ({ ...prev, image: "Failed to process image" }));
     }
   };
 
   const handleRemoveImage = () => {
     setImagePreview("");
+    setImageFile(null);
+    setRemoveImage(true);
     handleInputChange("image", "");
   };
 
@@ -186,11 +178,6 @@ export default function AddEditSubcategoryPage() {
       newErrors.slug = "Slug must not exceed 120 characters";
     } else if (!/^[a-z0-9-]+$/.test(formData.slug)) {
       newErrors.slug = "Slug can only contain lowercase letters, numbers, and hyphens";
-    }
-
-    // Image validation (optional, max 500 chars)
-    if (formData.image && formData.image.length > 500) {
-      newErrors.image = "Image URL must not exceed 500 characters";
     }
 
     // Commission rate validation (optional, 0-100)
@@ -222,18 +209,21 @@ export default function AddEditSubcategoryPage() {
       return;
     }
 
+    if (!category) {
+      toast("Error", {
+        description: "Category not found",
+      });
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
-
       const payload = {
         category_id: categoryId,
         name: formData.name.trim(),
         slug: formData.slug.trim(),
         description: formData.description.trim() || null,
-        image: formData.image || null,
         commission_rate: formData.use_custom_commission 
           ? parseFloat(formData.commission_rate)
           : null,
@@ -241,12 +231,39 @@ export default function AddEditSubcategoryPage() {
         is_active: formData.is_active,
       };
 
-      console.log("Subcategory data:", payload);
+      if (isEditMode && subcategoryId) {
+        // Update existing subcategory
+        await updateSubCategoryMutation.mutateAsync({
+          subCategoryId: subcategoryId,
+          updates: payload,
+          imageFile: imageFile || undefined,
+          removeImage: removeImage,
+          categorySlug: category.slug,
+        });
+
+        toast("Success", {
+          description: "Subcategory updated successfully",
+        });
+      } else {
+        // Create new subcategory
+        await createSubCategoryMutation.mutateAsync({
+          subCategory: payload,
+          imageFile: imageFile || undefined,
+          categorySlug: category.slug,
+        });
+
+        toast("Success", {
+          description: "Subcategory created successfully",
+        });
+      }
 
       // Redirect to subcategories list
       router.push(`/admin/categories/${categoryId}/subcategories`);
     } catch (error) {
       console.error("Error saving subcategory:", error);
+      toast("Error", {
+        description: `Failed to ${isEditMode ? 'update' : 'create'} subcategory`,
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -259,9 +276,38 @@ export default function AddEditSubcategoryPage() {
     parseInt(formData.display_order) >= 0 &&
     (!formData.use_custom_commission || (formData.commission_rate && parseFloat(formData.commission_rate) >= 0));
 
+  const isLoading = categoryLoading || (isEditMode && subcategoryLoading);
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background">
+        <div className="mx-auto max-w-7xl space-y-6 p-6">
+          <div className="flex items-center justify-center py-16">
+            <p className="text-muted-foreground">Loading...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!category) {
+    return (
+      <div className="min-h-screen bg-background">
+        <div className="mx-auto max-w-7xl space-y-6 p-6">
+          <div className="flex flex-col items-center justify-center py-16">
+            <p className="text-muted-foreground">Category not found</p>
+            <Link href="/admin/categories">
+              <Button className="mt-4">Back to Categories</Button>
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background">
-      <div className="mx-auto max-w-7xl space-y-6 ">
+      <div className="mx-auto max-w-7xl space-y-6 p-6">
         {/* Breadcrumb */}
         <nav className="flex items-center gap-2 text-sm text-muted-foreground">
           <Link href="/admin/categories" className="hover:text-foreground">
@@ -269,7 +315,7 @@ export default function AddEditSubcategoryPage() {
           </Link>
           <ChevronRight className="h-4 w-4" />
           <Link href={`/admin/categories/${categoryId}`} className="hover:text-foreground">
-            {mockCategory.name}
+            {category.name}
           </Link>
           <ChevronRight className="h-4 w-4" />
           <Link href={`/admin/categories/${categoryId}/subcategories`} className="hover:text-foreground">
@@ -291,7 +337,7 @@ export default function AddEditSubcategoryPage() {
             {isEditMode ? "Edit Subcategory" : "Add New Subcategory"}
           </h1>
           <p className="text-muted-foreground">
-            {isEditMode ? "Update subcategory details" : `Create a new subcategory under ${mockCategory.name}`}
+            {isEditMode ? "Update subcategory details" : `Create a new subcategory under ${category.name}`}
           </p>
         </div>
 
@@ -429,7 +475,7 @@ export default function AddEditSubcategoryPage() {
                     Override commission rate
                   </Label>
                   <p className="text-sm text-muted-foreground mt-1">
-                    Default: {mockCategory.commission_rate}% (from parent category)
+                    Default: {category.commission_rate}% (from parent category)
                   </p>
                 </div>
               </div>
@@ -448,7 +494,7 @@ export default function AddEditSubcategoryPage() {
                     max="100"
                     value={formData.commission_rate}
                     onChange={(e) => handleInputChange("commission_rate", e.target.value)}
-                    placeholder={mockCategory.commission_rate.toString()}
+                    placeholder={category.commission_rate.toString()}
                   />
                   <p className="text-xs text-muted-foreground">
                     Must be between 0 and 100. Uses 2 decimal places (e.g., 8.50)

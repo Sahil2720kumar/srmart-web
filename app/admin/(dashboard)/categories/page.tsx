@@ -39,114 +39,38 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import Link from "next/link";
-
-interface Category {
-  id: string;
-  name: string;
-  slug: string;
-  commission_rate: number;
-  display_order: number;
-  is_active: boolean;
-  subcategory_count: number;
-  created_at: string;
-}
-
-// Mock data based on provided test data
-const initialCategories: Category[] = [
-  {
-    id: "cat_001",
-    name: "Vegetables & Fruits",
-    slug: "vegetables-fruits",
-    commission_rate: 8.00,
-    display_order: 1,
-    is_active: true,
-    subcategory_count: 6,
-    created_at: "2024-01-15T10:30:00Z",
-  },
-  {
-    id: "cat_002",
-    name: "Dairy & Breakfast",
-    slug: "dairy-breakfast",
-    commission_rate: 10.00,
-    display_order: 2,
-    is_active: true,
-    subcategory_count: 4,
-    created_at: "2024-01-16T09:15:00Z",
-  },
-  {
-    id: "cat_003",
-    name: "Meat & Seafood",
-    slug: "meat-seafood",
-    commission_rate: 12.00,
-    display_order: 3,
-    is_active: true,
-    subcategory_count: 7,
-    created_at: "2024-01-17T11:20:00Z",
-  },
-  {
-    id: "cat_004",
-    name: "Snacks & Beverages",
-    slug: "snacks-beverages",
-    commission_rate: 12.00,
-    display_order: 4,
-    is_active: true,
-    subcategory_count: 10,
-    created_at: "2024-01-18T14:45:00Z",
-  },
-  {
-    id: "cat_005",
-    name: "Packaged Foods",
-    slug: "packaged-foods",
-    commission_rate: 10.00,
-    display_order: 5,
-    is_active: false,
-    subcategory_count: 12,
-    created_at: "2024-01-19T08:30:00Z",
-  },
-  {
-    id: "cat_006",
-    name: "Personal Care",
-    slug: "personal-care",
-    commission_rate: 15.00,
-    display_order: 6,
-    is_active: true,
-    subcategory_count: 10,
-    created_at: "2024-01-20T16:00:00Z",
-  },
-  {
-    id: "cat_007",
-    name: "Household Items",
-    slug: "household-items",
-    commission_rate: 12.00,
-    display_order: 7,
-    is_active: true,
-    subcategory_count: 10,
-    created_at: "2024-01-21T10:15:00Z",
-  },
-  {
-    id: "cat_008",
-    name: "Organic Products",
-    slug: "organic-products",
-    commission_rate: 10.00,
-    display_order: 8,
-    is_active: true,
-    subcategory_count: 10,
-    created_at: "2024-01-22T13:30:00Z",
-  },
-];
-
+import Image from "next/image";
+import { useCategories, useDeleteCategory, useToggleCategoryStatus } from "@/hooks/products/useCategories";
+import { toast } from "sonner";
+import { Category } from "@/types/supabase";
+ 
 export default function CategoriesPage() {
-  const [categories, setCategories] = useState(initialCategories);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [sortBy, setSortBy] = useState<string>("display_order");
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
 
-  const handleToggleActive = (id: string) => {
-    setCategories(categories.map(cat =>
-      cat.id === id ? { ...cat, is_active: !cat.is_active } : cat
-    ));
+  // Fetch categories based on status filter
+  const { data: categories = [], isLoading } = useCategories(
+    statusFilter !== "all" ? { is_active: statusFilter === "active" } : undefined
+  );
+
+  // Mutations
+  const deleteCategory = useDeleteCategory();
+  const toggleStatus = useToggleCategoryStatus();
+
+  const handleToggleActive = async (id: string, currentStatus: boolean) => {
+    try {
+      await toggleStatus.mutateAsync(id);
+      toast("Status updated",{
+        description: `Category ${currentStatus ? "deactivated" : "activated"} successfully`,
+      });
+    } catch (error) {
+      toast("Error",{
+        description: "Failed to update category status",
+      });
+    }
   };
 
   const handleDeleteClick = (category: Category) => {
@@ -154,11 +78,20 @@ export default function CategoriesPage() {
     setDeleteDialogOpen(true);
   };
 
-  const confirmDelete = () => {
-    if (selectedCategory) {
-      setCategories(categories.filter(cat => cat.id !== selectedCategory.id));
+  const confirmDelete = async () => {
+    if (!selectedCategory) return;
+
+    try {
+      await deleteCategory.mutateAsync(selectedCategory.id);
+      toast("Category deleted",{
+        description: `${selectedCategory.name} has been deleted successfully`,
+      });
       setDeleteDialogOpen(false);
       setSelectedCategory(null);
+    } catch (error) {
+      toast("Error",{
+        description: "Failed to delete category. It may have associated products.",
+      });
     }
   };
 
@@ -168,27 +101,33 @@ export default function CategoriesPage() {
         cat.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         cat.slug.toLowerCase().includes(searchQuery.toLowerCase());
       
-      const matchesStatus = 
-        statusFilter === "all" ||
-        (statusFilter === "active" && cat.is_active) ||
-        (statusFilter === "inactive" && !cat.is_active);
-
-      return matchesSearch && matchesStatus;
+      return matchesSearch;
     })
     .sort((a, b) => {
       if (sortBy === "display_order") {
         return a.display_order - b.display_order;
       } else if (sortBy === "commission") {
-        return b.commission_rate - a.commission_rate;
+        return Number(b.commission_rate) - Number(a.commission_rate);
       } else if (sortBy === "created") {
         return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
       }
       return 0;
     });
 
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
+          <p className="mt-4 text-muted-foreground">Loading categories...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-background ">
-      <div className="mx-auto max-w-7xl space-y-6">
+    <div className="min-h-screen bg-background">
+      <div className="mx-auto max-w-7xl space-y-6 p-6">
         {/* Header */}
         <div className="flex items-start justify-between">
           <div>
@@ -277,11 +216,11 @@ export default function CategoriesPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      <TableHead>Image</TableHead>
                       <TableHead>Category Name</TableHead>
                       <TableHead>Slug</TableHead>
                       <TableHead>Commission Rate</TableHead>
                       <TableHead>Display Order</TableHead>
-                      <TableHead>Subcategories</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>Created At</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
@@ -290,8 +229,30 @@ export default function CategoriesPage() {
                   <TableBody>
                     {filteredCategories.map((category) => (
                       <TableRow key={category.id}>
+                        <TableCell>
+                          <div className="relative h-12 w-12 overflow-hidden rounded-md border bg-muted">
+                            {category.image ? (
+                              <Image
+                                src={category.image}
+                                alt={category.name}
+                                fill
+                                className="object-cover"
+                              />
+                            ) : category.icon ? (
+                              <div className="flex h-full w-full items-center justify-center text-2xl">
+                                {category.icon}
+                              </div>
+                            ) : (
+                              <div className="flex h-full w-full items-center justify-center text-xs text-muted-foreground">
+                                No img
+                              </div>
+                            )}
+                          </div>
+                        </TableCell>
                         <TableCell className="font-medium">
-                          {category.name}
+                          <div className="flex items-center gap-3">
+                            {category.name}
+                          </div>
                         </TableCell>
                         <TableCell className="font-mono text-sm text-muted-foreground">
                           {category.slug}
@@ -301,11 +262,6 @@ export default function CategoriesPage() {
                         </TableCell>
                         <TableCell>
                           <Badge variant="outline">{category.display_order}</Badge>
-                        </TableCell>
-                        <TableCell>
-                          <span className="text-muted-foreground">
-                            {category.subcategory_count}
-                          </span>
                         </TableCell>
                         <TableCell>
                           {category.is_active ? (
@@ -341,7 +297,9 @@ export default function CategoriesPage() {
                                   Edit
                                 </Link>
                               </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => handleToggleActive(category.id)}>
+                              <DropdownMenuItem 
+                                onClick={() => handleToggleActive(category.id, category.is_active)}
+                              >
                                 <Power className="mr-2 h-4 w-4" />
                                 {category.is_active ? "Deactivate" : "Activate"}
                               </DropdownMenuItem>
@@ -372,13 +330,15 @@ export default function CategoriesPage() {
                 </div>
                 <h3 className="text-lg font-semibold mb-2">No categories found</h3>
                 <p className="text-muted-foreground mb-4">
-                  Try adjusting your search or filter criteria
+                  {searchQuery || statusFilter !== "all"
+                    ? "Try adjusting your search or filter criteria"
+                    : "Get started by creating your first category"}
                 </p>
                 <Button onClick={() => {
                   setSearchQuery("");
                   setStatusFilter("all");
                 }}>
-                  Clear Filters
+                  {searchQuery || statusFilter !== "all" ? "Clear Filters" : "Add Category"}
                 </Button>
               </div>
             </CardContent>
@@ -397,8 +357,12 @@ export default function CategoriesPage() {
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={confirmDelete} className="bg-red-600 hover:bg-red-700">
-                Delete
+              <AlertDialogAction 
+                onClick={confirmDelete} 
+                className="bg-red-600 hover:bg-red-700"
+                disabled={deleteCategory.isPending}
+              >
+                {deleteCategory.isPending ? "Deleting..." : "Delete"}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>

@@ -76,21 +76,32 @@ export const queryKeys = {
   categories: {
     all: ['categories'] as const,
     lists: () => [...queryKeys.categories.all, 'list'] as const,
-    list: (filters?: Record<string, any>) => [...queryKeys.categories.lists(), filters] as const,
+    list: (filters?: { is_active?: boolean }) => 
+      [...queryKeys.categories.lists(), filters] as const,
+    active: () => [...queryKeys.categories.all, 'active'] as const,
     details: () => [...queryKeys.categories.all, 'detail'] as const,
     detail: (id: string) => [...queryKeys.categories.details(), id] as const,
-    active: () => [...queryKeys.categories.all, 'active'] as const,
-    withProducts: (categoryId: string) => [...queryKeys.categories.detail(categoryId), 'products'] as const,
+    withProducts: (id: string) => 
+      [...queryKeys.categories.detail(id), 'with-products'] as const,
+    stats: (id: string) => 
+      [...queryKeys.categories.detail(id), 'stats'] as const,
   },
 
-  // Sub Categories
+  // Sub-categories
   subCategories: {
     all: ['sub-categories'] as const,
     lists: () => [...queryKeys.subCategories.all, 'list'] as const,
-    list: (filters?: Record<string, any>) => [...queryKeys.subCategories.lists(), filters] as const,
+    list: (filters?: { is_active?: boolean }) => 
+      [...queryKeys.subCategories.lists(), filters] as const,
+    byCategoryGroup: () => [...queryKeys.subCategories.all, 'by-category'] as const,
+    byCategory: (categoryId: string) => 
+      [...queryKeys.subCategories.byCategoryGroup(), categoryId] as const,
+    allByCategoryGroup: () => 
+      [...queryKeys.subCategories.all, 'all-by-category'] as const,
+    allByCategory: (categoryId: string) => 
+      [...queryKeys.subCategories.allByCategoryGroup(), categoryId] as const,
     details: () => [...queryKeys.subCategories.all, 'detail'] as const,
     detail: (id: string) => [...queryKeys.subCategories.details(), id] as const,
-    byCategory: (categoryId: string) => [...queryKeys.subCategories.all, 'category', categoryId] as const,
   },
 
   // Orders

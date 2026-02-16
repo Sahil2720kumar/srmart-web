@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter, useParams, useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ChevronLeft, Save, Upload, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,6 +10,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import Link from "next/link";
+import { 
+  useCategory, 
+  useCreateCategory, 
+  useUpdateCategory 
+} from "@/hooks/products/useCategories";
+import { toast } from "sonner";
 
 interface FormData {
   name: string;
@@ -30,30 +36,22 @@ interface FormErrors {
   display_order?: string;
 }
 
-// Mock data for edit mode
-const mockCategory = {
-  id: "cat_001",
-  name: "Vegetables & Fruits",
-  slug: "vegetables-fruits",
-  description: "Fresh vegetables and fruits delivered to your doorstep",
-  icon: "🥬",
-  color: "#10b981",
-  commission_rate: "8.00",
-  display_order: "1",
-  is_active: true,
-};
-
 export default function AddEditCategoryPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const categoryId = searchParams.get("categoryId");
   const isEditMode = !!categoryId;
 
-  console.log("isEditMode",isEditMode);
-  
-  
+  // Fetch category data if editing
+  const { data: category, isLoading: isLoadingCategory } = useCategory(categoryId || "");
+
+  // Mutations
+  const createCategory = useCreateCategory();
+  const updateCategory = useUpdateCategory();
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [removeExistingImage, setRemoveExistingImage] = useState(false);
   const [formData, setFormData] = useState<FormData>({
     name: "",
     slug: "",
@@ -67,22 +65,27 @@ export default function AddEditCategoryPage() {
   });
   const [errors, setErrors] = useState<FormErrors>({});
 
+  // Load category data when editing
   useEffect(() => {
-    if (isEditMode) {
-      // Prefill form with mock data in edit mode
+    if (isEditMode && category) {
       setFormData({
-        name: mockCategory.name,
-        slug: mockCategory.slug,
-        description: mockCategory.description,
-        icon: mockCategory.icon,
+        name: category.name,
+        slug: category.slug,
+        description: category.description || "",
+        icon: category.icon || "📦",
         image: null,
-        color: mockCategory.color,
-        commission_rate: mockCategory.commission_rate,
-        display_order: mockCategory.display_order,
-        is_active: mockCategory.is_active,
+        color: category.color || "#3b82f6",
+        commission_rate: category.commission_rate?.toString() || "",
+        display_order: category.display_order?.toString() || "",
+        is_active: category.is_active || false,
       });
+
+      // Set image preview if exists
+      if (category.image) {
+        setImagePreview(category.image);
+      }
     }
-  }, [isEditMode]);
+  }, [isEditMode, category]);
 
   const generateSlug = (name: string) => {
     return name
@@ -116,8 +119,10 @@ export default function AddEditCategoryPage() {
         setImagePreview(reader.result as string);
       };
       reader.readAsDataURL(file);
+      setRemoveExistingImage(false);
     } else {
       setImagePreview(null);
+      setRemoveExistingImage(true);
     }
     handleInputChange("image", file);
   };
@@ -152,15 +157,47 @@ export default function AddEditCategoryPage() {
     setIsSubmitting(true);
 
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      const categoryData = {
+        name: formData.name,
+        slug: formData.slug,
+        description: formData.description || null,
+        icon: formData.icon || null,
+        color: formData.color || null,
+        commission_rate: parseFloat(formData.commission_rate),
+        display_order: parseInt(formData.display_order),
+        is_active: formData.is_active,
+      };
 
-      console.log("Category data:", formData);
+      if (isEditMode && categoryId) {
+        // Update existing category
+        await updateCategory.mutateAsync({
+          categoryId,
+          updates: categoryData,
+          imageFile: formData.image || undefined,
+          removeImage: removeExistingImage && !formData.image,
+        });
+
+        toast("Category updated",{
+          description: "Category has been updated successfully",
+        });
+      } else {
+        // Create new category
+        await createCategory.mutateAsync({
+          category: categoryData,
+          imageFile: formData.image || undefined,
+        });
+
+        toast("Category created",{
+          description: "New category has been created successfully",
+        });
+      }
 
       // Redirect to list
       router.push("/admin/categories");
-    } catch (error) {
-      console.error("Error saving category:", error);
+    } catch (error: any) {
+      toast("Error",{
+        description: error.message || "Failed to save category",
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -172,8 +209,19 @@ export default function AddEditCategoryPage() {
     formData.commission_rate &&
     formData.display_order;
 
+  if (isEditMode && isLoadingCategory) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
+          <p className="mt-4 text-muted-foreground">Loading category...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-background ">
+    <div className="min-h-screen bg-background">
       <div className="mx-auto max-w-7xl space-y-6">
         {/* Header */}
         <div className="space-y-1">
@@ -275,7 +323,7 @@ export default function AddEditCategoryPage() {
                 <Label>Category Image</Label>
                 <div className="flex flex-col gap-2">
                   {imagePreview ? (
-                    <div className="relative w-full h-32 bg-muted rounded-md overflow-hidden">
+                    <div className="relative w-32 h-32 bg-muted rounded-md overflow-hidden">
                       <img
                         src={imagePreview}
                         alt="Category preview"
@@ -292,7 +340,7 @@ export default function AddEditCategoryPage() {
                       </Button>
                     </div>
                   ) : (
-                    <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed rounded-md cursor-pointer hover:bg-muted/50 transition-colors">
+                    <label className="flex flex-col items-center justify-center w-32 h-32 border-2 border-dashed rounded-md cursor-pointer hover:bg-muted/50 transition-colors">
                       <Upload className="h-8 w-8 text-muted-foreground mb-2" />
                       <span className="text-sm text-muted-foreground">Upload Image</span>
                       <input
