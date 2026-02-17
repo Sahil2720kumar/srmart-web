@@ -115,25 +115,6 @@ export function useVendorBankDetails(vendorId: string) {
   });
 }
 
-/**
- * Get vendor performance metrics from view
- */
-export function useVendorPerformance(vendorId: string) {
-  return useQuery({
-    queryKey: queryKeys.vendors.performance(vendorId),
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('v_vendor_performance')
-        .select('*')
-        .eq('id', vendorId)
-        .single();
-
-      if (error) throw error;
-      return data as VendorPerformance;
-    },
-    enabled: !!vendorId,
-  });
-}
 
 /**
  * Get vendor inventory using database function
@@ -356,14 +337,14 @@ export function useUpdateVendorKycStatus() {
       rejectedReason,
     }: {
       vendorId: string;
-      status: 'pending' | 'verified' | 'rejected';
+      status: 'pending' | 'approved' | 'rejected';
       rejectedReason?: string;
     }) => {
       const updates: VendorUpdate = {
         kyc_status: status,
-        kyc_verified_at: status === 'verified' ? new Date().toISOString() : null,
+        kyc_verified_at: status === 'approved' ? new Date().toISOString() : null,
         kyc_rejected_reason: status === 'rejected' ? rejectedReason : null,
-        is_verified: status === 'verified',
+        is_verified: status === 'approved',
       };
 
       const { data, error } = await supabase

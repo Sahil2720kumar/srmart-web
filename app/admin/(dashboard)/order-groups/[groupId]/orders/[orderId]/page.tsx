@@ -1,7 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronRight, Package, User, DollarSign, Clock, XCircle, AlertCircle } from "lucide-react";
+import {
+  ChevronRight,
+  Package,
+  User,
+  DollarSign,
+  Clock,
+  XCircle,
+  AlertCircle,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -20,6 +28,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog,
   DialogContent,
@@ -30,104 +39,77 @@ import {
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import Link from "next/link";
-import Image from "next/image";
 import { useParams } from "next/navigation";
+import { toast } from "sonner";
+import {
+  useOrder,
+  useOrderItems,
+  useOrderTracking,
+  useUpdateOrderStatus,
+  useCustomerCancelOrder,
+} from "@/hooks/orders/useOrders";
+import { createClient } from "@/lib/supabase/client";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 
-// Mock data
-const mockOrder = {
-  id: "ORD-001",
-  order_number: "ORD-2024-001",
-  status: "out_for_delivery",
-  payment_status: "paid",
-  payment_method: "upi",
-  created_at: "2024-02-10T10:30:00Z",
-  confirmed_at: "2024-02-10T10:35:00Z",
-  picked_up_at: "2024-02-10T11:00:00Z",
-  delivered_at: null,
-  customer_id: "CUST-123",
-  delivery_address_id: "ADDR-456",
-  delivery_boy_id: "DB-001",
-  special_instructions: "Please ring the doorbell twice",
-  delivery_otp: "1234",
-  subtotal: 400.00,
-  tax: 36.00,
-  delivery_fee: 20.00,
-  discount: 5.50,
-  coupon_discount: 0,
-  total_amount: 450.50,
-  commission_rate: 10,
-  total_commission: 45.05,
-  platform_net_revenue: 25.05,
-  vendor_payout: 405.45,
-  cancelled_by: null,
-  cancellation_reason: null,
-  cancelled_at: null,
-};
+// ── Refund mutation (direct DB update, no dedicated RPC in useOrders.ts) ──────
+const supabase = createClient();
 
-const mockOrderItems = [
-  {
-    id: "ITEM-001",
-    product_id: "PROD-123",
-    product_name: "Organic Tomatoes",
-    product_image: "/placeholder-product.jpg",
-    quantity: 2,
-    unit_price: 50.00,
-    discount_price: 45.00,
-    total_price: 90.00,
-    commission_amount: 9.00,
-  },
-  {
-    id: "ITEM-002",
-    product_id: "PROD-456",
-    product_name: "Fresh Milk (1L)",
-    product_image: "/placeholder-product.jpg",
-    quantity: 3,
-    unit_price: 60.00,
-    discount_price: 55.00,
-    total_price: 165.00,
-    commission_amount: 16.50,
-  },
-  {
-    id: "ITEM-003",
-    product_id: "PROD-789",
-    product_name: "Whole Wheat Bread",
-    product_image: "/placeholder-product.jpg",
-    quantity: 1,
-    unit_price: 40.00,
-    discount_price: null,
-    total_price: 40.00,
-    commission_amount: 4.00,
-  },
-  {
-    id: "ITEM-004",
-    product_id: "PROD-321",
-    product_name: "Fresh Eggs (12 pcs)",
-    product_image: "/placeholder-product.jpg",
-    quantity: 1,
-    unit_price: 105.00,
-    discount_price: null,
-    total_price: 105.00,
-    commission_amount: 10.50,
-  },
-];
+function useRefundOrder() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (orderId: string) => {
+      const { data, error } = await supabase
+        .from("orders")
+        .update({ status: "refunded", payment_status: "refunded" })
+        .eq("id", orderId)
+        .select("*")
+        .single();
+      if (error) throw error;
 
-const statusColors = {
-  pending: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400",
-  confirmed: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400",
-  processing: "bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-400",
-  ready_for_pickup: "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400",
-  picked_up: "bg-cyan-100 text-cyan-800 dark:bg-cyan-900/30 dark:text-cyan-400",
-  out_for_delivery: "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400",
-  delivered: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
+      await supabase.from("order_tracking").insert({
+        order_id: orderId,
+        status: "refunded",
+        description: "Order refunded by admin",
+      });
+
+      return data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["orders", "detail", data.id] });
+      queryClient.invalidateQueries({ queryKey: ["orders", "all"] });
+    },
+  });
+}
+
+// ── Constants ────────────────────────────────────────────────────────────────
+
+const statusColors: Record<string, string> = {
+  pending:
+    "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400",
+  confirmed:
+    "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400",
+  processing:
+    "bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-400",
+  ready_for_pickup:
+    "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400",
+  picked_up:
+    "bg-cyan-100 text-cyan-800 dark:bg-cyan-900/30 dark:text-cyan-400",
+  out_for_delivery:
+    "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400",
+  delivered:
+    "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
   cancelled: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
-  refunded: "bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400",
+  refunded:
+    "bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400",
 };
 
-const paymentStatusColors = {
-  pending: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400",
+const paymentStatusColors: Record<string, string> = {
+  pending:
+    "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400",
   paid: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
   failed: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
-  refunded: "bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400",
+  refunded:
+    "bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400",
 };
 
 const timelineSteps = [
@@ -140,54 +122,109 @@ const timelineSteps = [
   { status: "delivered", label: "Delivered" },
 ];
 
-// {params 
-// }: { 
-//   params: { groupId: string; orderId: string } 
-// }
+// ── Component ────────────────────────────────────────────────────────────────
+
 export default function OrderDetailsPage() {
-  const [order, setOrder] = useState(mockOrder);
-  const [newStatus, setNewStatus] = useState(order.status);
+  const { orderId, groupId } = useParams<{
+    orderId: string;
+    groupId: string;
+  }>();
+
+  const [newStatus, setNewStatus] = useState("");
   const [showStatusDialog, setShowStatusDialog] = useState(false);
   const [showCancelDialog, setShowCancelDialog] = useState(false);
   const [showRefundDialog, setShowRefundDialog] = useState(false);
   const [cancellationReason, setCancellationReason] = useState("");
-  const {orderId,groupId}=useParams()
+
+  // ── Queries ──────────────────────────────────────────────────────────────
+  const { data: order, isLoading: orderLoading, error: orderError } = useOrder(orderId);
+  const { data: orderItems, isLoading: itemsLoading } = useOrderItems(orderId);
+  const { data: tracking } = useOrderTracking(orderId);
 
 
-  const handleUpdateStatus = () => {
-    setOrder({ ...order, status: newStatus as any });
-    setShowStatusDialog(false);
+  console.log(order);
+  
+  // ── Mutations ────────────────────────────────────────────────────────────
+  const updateStatus = useUpdateOrderStatus();
+  const cancelOrder = useCustomerCancelOrder();
+  const refundOrder = useRefundOrder();
+
+  // ── Handlers ─────────────────────────────────────────────────────────────
+  const handleUpdateStatus = async () => {
+    if (!newStatus || !order) return;
+    try {
+      await updateStatus.mutateAsync({
+        orderId: order.id,
+        status: newStatus,
+        description: `Status updated to ${newStatus.replace(/_/g, " ")} by admin`,
+      });
+      toast.success("Status updated successfully");
+    } catch {
+      toast.error("Failed to update status");
+    } finally {
+      setShowStatusDialog(false);
+    }
   };
 
-  const handleCancelOrder = () => {
-    setOrder({ 
-      ...order, 
-      status: "cancelled",
-      cancelled_by: "admin",
-      cancellation_reason: cancellationReason,
-      cancelled_at: new Date().toISOString(),
-    });
-    setShowCancelDialog(false);
-    setCancellationReason("");
+  const handleCancelOrder = async () => {
+    if (!order) return;
+    try {
+      await cancelOrder.mutateAsync({
+        p_order_id: order.id,
+        p_customer_id: order.customer_id,
+        p_cancellation_reason: cancellationReason,
+      });
+      toast.success("Order cancelled successfully");
+    } catch {
+      toast.error("Failed to cancel order");
+    } finally {
+      setShowCancelDialog(false);
+      setCancellationReason("");
+    }
   };
 
-  const handleRefundOrder = () => {
-    setOrder({ 
-      ...order, 
-      status: "refunded",
-      payment_status: "refunded",
-    });
-    setShowRefundDialog(false);
+  const handleRefundOrder = async () => {
+    if (!order) return;
+    try {
+      await refundOrder.mutateAsync(order.id);
+      toast.success("Order refunded successfully");
+    } catch {
+      toast.error("Failed to process refund");
+    } finally {
+      setShowRefundDialog(false);
+    }
   };
 
-  const getStatusIndex = (status: string) => {
-    return timelineSteps.findIndex(step => step.status === status);
-  };
+  const getStatusIndex = (status: string) =>
+    timelineSteps.findIndex((step) => step.status === status);
+
+  // ── Loading / Error states ────────────────────────────────────────────────
+  if (orderLoading) {
+    return (
+      <div className="min-h-screen bg-background">
+        <div className="mx-auto max-w-7xl space-y-6">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-48 w-full rounded-xl" />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (orderError || !order) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <p className="text-destructive text-lg">
+          Failed to load order. Please go back and try again.
+        </p>
+      </div>
+    );
+  }
 
   const currentStatusIndex = getStatusIndex(order.status);
 
   return (
-    <div className="min-h-screen bg-background ">
+    <div className="min-h-screen bg-background">
       <div className="mx-auto max-w-7xl space-y-6">
         {/* Breadcrumb */}
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -199,7 +236,10 @@ export default function OrderDetailsPage() {
             Order Groups
           </Link>
           <ChevronRight className="h-4 w-4" />
-          <Link href={`/admin/order-groups/${groupId}/orders`} className="hover:text-foreground">
+          <Link
+            href={`/admin/order-groups/${groupId}/orders`}
+            className="hover:text-foreground"
+          >
             Orders
           </Link>
           <ChevronRight className="h-4 w-4" />
@@ -224,54 +264,88 @@ export default function OrderDetailsPage() {
           <CardContent>
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
               <div>
-                <p className="text-sm text-muted-foreground mb-2">Order Number</p>
+                <p className="text-sm text-muted-foreground mb-2">
+                  Order Number
+                </p>
                 <p className="text-lg font-semibold">{order.order_number}</p>
               </div>
               <div>
                 <p className="text-sm text-muted-foreground mb-2">Status</p>
                 <div className="flex items-center gap-2">
-                  <Badge className={statusColors[order.status]}>
+                  <Badge
+                    className={
+                      statusColors[order.status] ?? statusColors.pending
+                    }
+                  >
                     {order.status.replace(/_/g, " ")}
                   </Badge>
-                  <Button 
-                    variant="outline" 
+                  <Button
+                    variant="outline"
                     size="sm"
-                    onClick={() => setShowStatusDialog(true)}
+                    onClick={() => {
+                      setNewStatus(order.status);
+                      setShowStatusDialog(true);
+                    }}
                   >
                     Update
                   </Button>
                 </div>
               </div>
               <div>
-                <p className="text-sm text-muted-foreground mb-2">Payment Status</p>
-                <Badge className={paymentStatusColors[order.payment_status]}>
+                <p className="text-sm text-muted-foreground mb-2">
+                  Payment Status
+                </p>
+                <Badge
+                  className={
+                    paymentStatusColors[order.payment_status] ??
+                    paymentStatusColors.pending
+                  }
+                >
                   {order.payment_status}
                 </Badge>
               </div>
               <div>
-                <p className="text-sm text-muted-foreground mb-2">Payment Method</p>
-                <p className="text-lg font-semibold uppercase">{order.payment_method}</p>
+                <p className="text-sm text-muted-foreground mb-2">
+                  Payment Method
+                </p>
+                <p className="text-lg font-semibold uppercase">
+                  {order.payment_method}
+                </p>
               </div>
               <div>
                 <p className="text-sm text-muted-foreground mb-2">Created At</p>
-                <p className="text-sm">{new Date(order.created_at).toLocaleString()}</p>
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground mb-2">Confirmed At</p>
                 <p className="text-sm">
-                  {order.confirmed_at ? new Date(order.confirmed_at).toLocaleString() : "N/A"}
+                  {new Date(order.created_at).toLocaleString()}
                 </p>
               </div>
               <div>
-                <p className="text-sm text-muted-foreground mb-2">Picked Up At</p>
+                <p className="text-sm text-muted-foreground mb-2">
+                  Confirmed At
+                </p>
                 <p className="text-sm">
-                  {order.picked_up_at ? new Date(order.picked_up_at).toLocaleString() : "N/A"}
+                  {order.confirmed_at
+                    ? new Date(order.confirmed_at).toLocaleString()
+                    : "N/A"}
                 </p>
               </div>
               <div>
-                <p className="text-sm text-muted-foreground mb-2">Delivered At</p>
+                <p className="text-sm text-muted-foreground mb-2">
+                  Picked Up At
+                </p>
                 <p className="text-sm">
-                  {order.delivered_at ? new Date(order.delivered_at).toLocaleString() : "N/A"}
+                  {order.picked_up_at
+                    ? new Date(order.picked_up_at).toLocaleString()
+                    : "N/A"}
+                </p>
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground mb-2">
+                  Delivered At
+                </p>
+                <p className="text-sm">
+                  {order.delivered_at
+                    ? new Date(order.delivered_at).toLocaleString()
+                    : "N/A"}
                 </p>
               </div>
             </div>
@@ -289,27 +363,65 @@ export default function OrderDetailsPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
-                <p className="text-sm text-muted-foreground">Customer ID</p>
-                <p className="text-lg font-semibold">{order.customer_id}</p>
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Delivery Address ID</p>
-                <p className="text-lg font-semibold">{order.delivery_address_id}</p>
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Delivery Boy ID</p>
+                <p className="text-sm text-muted-foreground">Customer</p>
                 <p className="text-lg font-semibold">
-                  {order.delivery_boy_id || "Not Assigned"}
+                  {order.customers
+                    ? `${order.customers.first_name} ${order.customers.last_name}`
+                    : order.customer_id}
                 </p>
+                {order.customers?.users?.email && (
+                  <p className="text-sm text-muted-foreground">
+                    {order.customers.users.email}
+                  </p>
+                )}
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">Special Instructions</p>
-                <p className="text-sm">{order.special_instructions || "None"}</p>
+                <p className="text-sm text-muted-foreground">
+                  Delivery Address
+                </p>
+                {order.delivery_address ? (
+                  <p className="text-sm">
+                    {[
+                      order.delivery_address.address_line1,
+                      order.delivery_address.address_line2,
+                      order.delivery_address.city,
+                      order.delivery_address.state,
+                      order.delivery_address.pincode,
+                    ]
+                      .filter(Boolean)
+                      .join(", ")}
+                  </p>
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    {order.delivery_address_id ?? "N/A"}
+                  </p>
+                )}
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Delivery Boy</p>
+                <p className="text-lg font-semibold">
+                  {order.delivery_boys
+                    ? `${order.delivery_boys.first_name} ${order.delivery_boys.last_name}`
+                    : order.delivery_boy_id ?? "Not Assigned"}
+                </p>
+                {order.delivery_boys?.users?.phone && (
+                  <p className="text-sm text-muted-foreground">
+                    {order.delivery_boys.users.phone}
+                  </p>
+                )}
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">
+                  Special Instructions
+                </p>
+                <p className="text-sm">
+                  {order.special_instructions || "None"}
+                </p>
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Delivery OTP</p>
                 <p className="text-lg font-mono font-semibold">
-                  {order.delivery_otp ? `••••` : "N/A"}
+                  {order.delivery_otp ? "••••" : "N/A"}
                 </p>
               </div>
             </CardContent>
@@ -326,44 +438,70 @@ export default function OrderDetailsPage() {
             <CardContent className="space-y-3">
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Subtotal</span>
-                <span className="font-semibold">₹{order.subtotal.toFixed(2)}</span>
+                <span className="font-semibold">
+                  ₹{Number(order.subtotal ?? 0).toFixed(2)}
+                </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Tax</span>
-                <span className="font-semibold">₹{order.tax.toFixed(2)}</span>
+                <span className="font-semibold">
+                  ₹{Number(order.tax ?? 0).toFixed(2)}
+                </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-muted-foreground">Delivery Fee</span>
-                <span className="font-semibold">₹{order.delivery_fee.toFixed(2)}</span>
+                <span className="text-muted-foreground">Delivery Fee{order.is_free_delivery?" (absorbed)":""}</span>
+                <span className="font-semibold">
+                  ₹{Number(order.delivery_fee ?? 0).toFixed(2)}
+                </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Discount</span>
-                <span className="font-semibold text-green-600">-₹{order.discount.toFixed(2)}</span>
+                <span className="font-semibold text-green-600">
+                  -₹{Number(order.discount ?? 0).toFixed(2)}
+                </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Coupon Discount</span>
-                <span className="font-semibold text-green-600">-₹{order.coupon_discount.toFixed(2)}</span>
+                <span className="font-semibold text-green-600">
+                  -₹{Number(order.coupon_discount ?? 0).toFixed(2)}
+                </span>
               </div>
               <div className="flex justify-between border-t pt-3">
                 <span className="font-bold text-lg">Total Amount</span>
-                <span className="font-bold text-lg">₹{order.total_amount.toFixed(2)}</span>
+                <span className="font-bold text-lg">
+                  ₹{Number(order.total_amount).toFixed(2)}
+                </span>
               </div>
               <div className="mt-4 pt-4 border-t space-y-2">
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Commission Rate</span>
-                  <span className="font-semibold">{order.commission_rate}%</span>
+                  <span className="text-muted-foreground">
+                    Commission Rate
+                  </span>
+                  <span className="font-semibold">
+                    {order.commission_rate ?? 0}%
+                  </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Total Commission</span>
-                  <span className="font-semibold">₹{order.total_commission.toFixed(2)}</span>
+                  <span className="text-muted-foreground">
+                    Total Commission
+                  </span>
+                  <span className="font-semibold">
+                    ₹{Number(order.total_commission ?? 0).toFixed(2)}
+                  </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Platform Net Revenue</span>
-                  <span className="font-semibold text-green-600">₹{order.platform_net_revenue.toFixed(2)}</span>
+                  <span className="text-muted-foreground">
+                    Platform Net Revenue
+                  </span>
+                  <span className="font-semibold text-green-600">
+                    ₹{Number(order.platform_net_revenue ?? 0).toFixed(2)}
+                  </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Vendor Payout</span>
-                  <span className="font-semibold">₹{order.vendor_payout.toFixed(2)}</span>
+                  <span className="font-semibold">
+                    ₹{Number(order.vendor_payout ?? 0).toFixed(2)}
+                  </span>
                 </div>
               </div>
             </CardContent>
@@ -389,39 +527,74 @@ export default function OrderDetailsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {mockOrderItems.map((item) => (
-                    <TableRow key={item.id}>
-                      <TableCell>
-                        <div className="flex items-center gap-3">
-                          <div className="h-12 w-12 bg-muted rounded-md flex items-center justify-center">
-                            <Package className="h-6 w-6 text-muted-foreground" />
-                          </div>
-                          <div>
-                            <p className="font-medium">{item.product_name}</p>
-                            <p className="text-xs text-muted-foreground">{item.product_id}</p>
-                          </div>
-                        </div>
+                  {itemsLoading ? (
+                    Array.from({ length: 3 }).map((_, i) => (
+                      <TableRow key={i}>
+                        {Array.from({ length: 6 }).map((_, j) => (
+                          <TableCell key={j}>
+                            <Skeleton className="h-4 w-full" />
+                          </TableCell>
+                        ))}
+                      </TableRow>
+                    ))
+                  ) : !orderItems?.length ? (
+                    <TableRow>
+                      <TableCell
+                        colSpan={6}
+                        className="text-center text-muted-foreground py-6"
+                      >
+                        No items found.
                       </TableCell>
-                      <TableCell className="font-semibold">{item.quantity}</TableCell>
-                      <TableCell>₹{item.unit_price.toFixed(2)}</TableCell>
-                      <TableCell>
-                        {item.discount_price ? (
-                          <span className="text-green-600">₹{item.discount_price.toFixed(2)}</span>
-                        ) : (
-                          <span className="text-muted-foreground">N/A</span>
-                        )}
-                      </TableCell>
-                      <TableCell className="font-semibold">₹{item.total_price.toFixed(2)}</TableCell>
-                      <TableCell>₹{item.commission_amount.toFixed(2)}</TableCell>
                     </TableRow>
-                  ))}
+                  ) : (
+                    orderItems.map((item) => (
+                      <TableRow key={item.id}>
+                        <TableCell>
+                          <div className="flex items-center gap-3">
+                            <div className="h-12 w-12 bg-muted rounded-md flex items-center justify-center">
+                              <Package className="h-6 w-6 text-muted-foreground" />
+                            </div>
+                            <div>
+                              <p className="font-medium">
+                                {item.products?.name ?? item.product_id}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                {item.product_id}
+                              </p>
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell className="font-semibold">
+                          {item.quantity}
+                        </TableCell>
+                        <TableCell>
+                          ₹{Number(item.unit_price).toFixed(2)}
+                        </TableCell>
+                        <TableCell>
+                          {item.discount_price != null ? (
+                            <span className="text-green-600">
+                              ₹{Number(item.discount_price).toFixed(2)}
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground">N/A</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="font-semibold">
+                          ₹{Number(item.total_price).toFixed(2)}
+                        </TableCell>
+                        <TableCell>
+                          ₹{Number(item.commission_amount ?? 0).toFixed(2)}
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
                 </TableBody>
               </Table>
             </div>
           </CardContent>
         </Card>
 
-        {/* Cancellation / Refund Section */}
+        {/* Cancellation info OR Order Actions */}
         {order.cancelled_at ? (
           <Card className="border-red-200 dark:border-red-900">
             <CardHeader>
@@ -433,15 +606,21 @@ export default function OrderDetailsPage() {
             <CardContent className="space-y-3">
               <div>
                 <p className="text-sm text-muted-foreground">Cancelled By</p>
-                <p className="text-lg font-semibold capitalize">{order.cancelled_by}</p>
+                <p className="text-lg font-semibold capitalize">
+                  {order.cancelled_by ?? "—"}
+                </p>
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">Cancellation Reason</p>
-                <p className="text-sm">{order.cancellation_reason}</p>
+                <p className="text-sm text-muted-foreground">
+                  Cancellation Reason
+                </p>
+                <p className="text-sm">{order.cancellation_reason ?? "—"}</p>
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Cancelled At</p>
-                <p className="text-sm">{new Date(order.cancelled_at).toLocaleString()}</p>
+                <p className="text-sm">
+                  {new Date(order.cancelled_at).toLocaleString()}
+                </p>
               </div>
             </CardContent>
           </Card>
@@ -455,17 +634,23 @@ export default function OrderDetailsPage() {
             </CardHeader>
             <CardContent>
               <div className="flex gap-3">
-                <Button 
-                  variant="destructive" 
+                <Button
+                  variant="destructive"
                   onClick={() => setShowCancelDialog(true)}
-                  disabled={order.status === "delivered" || order.status === "cancelled"}
+                  disabled={
+                    order.status === "delivered" ||
+                    order.status === "cancelled" ||
+                    cancelOrder.isPending
+                  }
                 >
                   Cancel Order
                 </Button>
-                <Button 
-                  variant="outline" 
+                <Button
+                  variant="outline"
                   onClick={() => setShowRefundDialog(true)}
-                  disabled={order.payment_status !== "paid"}
+                  disabled={
+                    order.payment_status !== "paid" || refundOrder.isPending
+                  }
                 >
                   Refund Order
                 </Button>
@@ -487,23 +672,30 @@ export default function OrderDetailsPage() {
               {timelineSteps.map((step, index) => {
                 const isCompleted = index <= currentStatusIndex;
                 const isCurrent = index === currentStatusIndex;
-                
+                // Find matching tracking entry for timestamp
+                const trackingEntry = tracking?.find(
+                  (t) => t.status === step.status
+                );
+
                 return (
-                  <div key={step.status} className="relative flex items-center gap-4 pb-8 last:pb-0">
+                  <div
+                    key={step.status}
+                    className="relative flex items-center gap-4 pb-8 last:pb-0"
+                  >
                     {/* Vertical Line */}
                     {index < timelineSteps.length - 1 && (
-                      <div 
+                      <div
                         className={`absolute left-3 top-7 w-0.5 h-full ${
                           isCompleted ? "bg-primary" : "bg-border"
                         }`}
                       />
                     )}
-                    
+
                     {/* Circle */}
-                    <div 
+                    <div
                       className={`relative z-10 flex h-6 w-6 items-center justify-center rounded-full border-2 ${
-                        isCompleted 
-                          ? "border-primary bg-primary" 
+                        isCompleted
+                          ? "border-primary bg-primary"
                           : "border-border bg-background"
                       }`}
                     >
@@ -511,14 +703,30 @@ export default function OrderDetailsPage() {
                         <div className="h-2 w-2 rounded-full bg-primary-foreground" />
                       )}
                     </div>
-                    
+
                     {/* Content */}
                     <div className="flex-1">
-                      <p className={`font-medium ${isCurrent ? "text-foreground" : "text-muted-foreground"}`}>
+                      <p
+                        className={`font-medium ${
+                          isCurrent
+                            ? "text-foreground"
+                            : "text-muted-foreground"
+                        }`}
+                      >
                         {step.label}
                       </p>
                       {isCurrent && (
-                        <p className="text-xs text-muted-foreground">Current Status</p>
+                        <p className="text-xs text-muted-foreground">
+                          Current Status
+                        </p>
+                      )}
+                      {trackingEntry && (
+                        <p className="text-xs text-muted-foreground">
+                          {new Date(trackingEntry.created_at).toLocaleString()}
+                          {trackingEntry.description
+                            ? ` — ${trackingEntry.description}`
+                            : ""}
+                        </p>
                       )}
                     </div>
                   </div>
@@ -527,6 +735,8 @@ export default function OrderDetailsPage() {
             </div>
           </CardContent>
         </Card>
+
+        {/* ── Dialogs ─────────────────────────────────────────────────────── */}
 
         {/* Status Update Dialog */}
         <Dialog open={showStatusDialog} onOpenChange={setShowStatusDialog}>
@@ -546,9 +756,13 @@ export default function OrderDetailsPage() {
                   <SelectItem value="pending">Pending</SelectItem>
                   <SelectItem value="confirmed">Confirmed</SelectItem>
                   <SelectItem value="processing">Processing</SelectItem>
-                  <SelectItem value="ready_for_pickup">Ready for Pickup</SelectItem>
+                  <SelectItem value="ready_for_pickup">
+                    Ready for Pickup
+                  </SelectItem>
                   <SelectItem value="picked_up">Picked Up</SelectItem>
-                  <SelectItem value="out_for_delivery">Out for Delivery</SelectItem>
+                  <SelectItem value="out_for_delivery">
+                    Out for Delivery
+                  </SelectItem>
                   <SelectItem value="delivered">Delivered</SelectItem>
                   <SelectItem value="cancelled">Cancelled</SelectItem>
                   <SelectItem value="refunded">Refunded</SelectItem>
@@ -556,10 +770,19 @@ export default function OrderDetailsPage() {
               </Select>
             </div>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setShowStatusDialog(false)}>
+              <Button
+                variant="outline"
+                onClick={() => setShowStatusDialog(false)}
+                disabled={updateStatus.isPending}
+              >
                 Cancel
               </Button>
-              <Button onClick={handleUpdateStatus}>Update Status</Button>
+              <Button
+                onClick={handleUpdateStatus}
+                disabled={updateStatus.isPending}
+              >
+                {updateStatus.isPending ? "Updating…" : "Update Status"}
+              </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
@@ -582,15 +805,23 @@ export default function OrderDetailsPage() {
               />
             </div>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setShowCancelDialog(false)}>
+              <Button
+                variant="outline"
+                onClick={() => setShowCancelDialog(false)}
+                disabled={cancelOrder.isPending}
+              >
                 Cancel
               </Button>
-              <Button 
-                variant="destructive" 
+              <Button
+                variant="destructive"
                 onClick={handleCancelOrder}
-                disabled={!cancellationReason.trim()}
+                disabled={
+                  !cancellationReason.trim() || cancelOrder.isPending
+                }
               >
-                Confirm Cancellation
+                {cancelOrder.isPending
+                  ? "Cancelling…"
+                  : "Confirm Cancellation"}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -602,15 +833,23 @@ export default function OrderDetailsPage() {
             <DialogHeader>
               <DialogTitle>Refund Order</DialogTitle>
               <DialogDescription>
-                Are you sure you want to refund this order? This action will process a refund of ₹{order.total_amount.toFixed(2)}.
+                Are you sure you want to refund this order? This action will
+                process a refund of ₹{Number(order.total_amount).toFixed(2)}.
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setShowRefundDialog(false)}>
+              <Button
+                variant="outline"
+                onClick={() => setShowRefundDialog(false)}
+                disabled={refundOrder.isPending}
+              >
                 Cancel
               </Button>
-              <Button onClick={handleRefundOrder}>
-                Confirm Refund
+              <Button
+                onClick={handleRefundOrder}
+                disabled={refundOrder.isPending}
+              >
+                {refundOrder.isPending ? "Processing…" : "Confirm Refund"}
               </Button>
             </DialogFooter>
           </DialogContent>

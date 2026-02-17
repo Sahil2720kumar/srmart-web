@@ -296,3 +296,129 @@ export function useRejectCashout() {
     },
   });
 }
+
+
+export interface VendorWalletData {
+  wallet_id: string;
+  available_balance: number;
+  pending_balance: number;
+  lifetime_earnings: number;
+  total_withdrawn: number;
+  earnings_today: number;
+  earnings_this_week: number;
+  earnings_this_month: number;
+}
+
+// ─── Date helpers ─────────────────────────────────────────────────────────────
+
+function startOfDay(d: Date): string {
+  const x = new Date(d);
+  x.setHours(0, 0, 0, 0);
+  return x.toISOString();
+}
+
+function startOfWeek(d: Date): string {
+  const x = new Date(d);
+  x.setDate(x.getDate() - x.getDay()); // back to Sunday
+  x.setHours(0, 0, 0, 0);
+  return x.toISOString();
+}
+
+function startOfMonth(d: Date): string {
+  const x = new Date(d);
+  x.setDate(1);
+  x.setHours(0, 0, 0, 0);
+  return x.toISOString();
+}
+
+function sumNet(rows: { net_amount: number | null }[]): number {
+  return rows.reduce((acc, r) => acc + (r.net_amount ?? 0), 0);
+}
+
+// ─── Hook ─────────────────────────────────────────────────────────────────────
+
+export function useVendorWallet(vendorUserId: string) {
+  return useQuery<VendorWalletData | null>({
+    queryKey: ["vendor_wallet", vendorUserId],
+    queryFn: async () => {
+      const now = new Date();
+
+      // ── 1. Wallet row (balances) ──────────────────────────────────────────
+      let walletId          = "";
+      let available_balance = 0;
+      let pending_balance   = 0;
+      let lifetime_earnings = 0;
+      let total_withdrawn   = 0;
+
+      // Try RPC first
+      const { data: rpcData, error: rpcError } = await supabase.rpc(
+        "get_wallet_details",
+        { p_user_id: vendorUserId }
+      );
+
+      if (!rpcError && rpcData && rpcData.length > 0) {
+        const row     = rpcData[0];
+        walletId          = row.wallet_id         ?? "";
+        available_balance = row.available_balance ?? 0;
+        pending_balance   = row.pending_balance   ?? 0;
+        lifetime_earnings = row.lifetime_earnings ?? 0;
+        total_withdrawn   = row.total_withdrawn   ?? 0;
+      } else {
+        // Fallback: direct wallets table query
+        const { data: walletRow, error: walletError } = await supabase
+          .from("wallets")
+          .select("id, available_balance, pending_balance, lifetime_earnings, total_withdrawn")
+          .eq("user_id", vendorUserId)
+          .eq("user_type", "vendor")
+          .maybeSingle();
+
+        if (walletError) throw walletError;
+        if (!walletRow) return null;
+
+        walletId          = walletRow.id;
+        available_balance = walletRow.available_balance ?? 0;
+        pending_balance   = walletRow.pending_balance   ?? 0;
+        lifetime_earnings = walletRow.lifetime_earnings ?? 0;
+        total_withdrawn   = walletRow.total_withdrawn   ?? 0;
+      }
+
+      // ── 2. Date-based earnings computed from vendor_payouts ───────────────
+      // Fetch payouts from start of current month in one query, then bucket
+      // client-side into today / this-week / this-month.
+      const monthStart = startOfMonth(now);
+
+      const { data: recentPayouts, error: payoutsError } = await supabase
+        .from("vendor_payouts")
+        .select("net_amount, payout_date, created_at")
+        .eq("vendor_id", vendorUserId)
+        .gte("created_at", monthStart);
+
+      if (payoutsError) throw payoutsError;
+
+      const payouts   = recentPayouts ?? [];
+      const todayStart = startOfDay(now);
+      const weekStart  = startOfWeek(now);
+
+      // Best available timestamp for each row
+      const ts = (p: { payout_date: string | null; created_at: string | null }) =>
+        p.payout_date ?? p.created_at ?? "";
+
+      const earnings_today       = sumNet(payouts.filter((p) => ts(p) >= todayStart));
+      const earnings_this_week   = sumNet(payouts.filter((p) => ts(p) >= weekStart));
+      const earnings_this_month  = sumNet(payouts); // all rows are already >= monthStart
+
+      // ── 3. Return assembled result ────────────────────────────────────────
+      return {
+        wallet_id: walletId,
+        available_balance,
+        pending_balance,
+        lifetime_earnings,
+        total_withdrawn,
+        earnings_today,
+        earnings_this_week,
+        earnings_this_month,
+      } satisfies VendorWalletData;
+    },
+    enabled: !!vendorUserId,
+  });
+}

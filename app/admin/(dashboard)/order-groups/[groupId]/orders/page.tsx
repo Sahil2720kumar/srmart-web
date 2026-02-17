@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog,
   DialogContent,
@@ -30,87 +31,49 @@ import {
 } from "@/components/ui/dialog";
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import { useOrderGroup } from "@/hooks/orders/useOrders";
+import { useUpdateOrderStatus } from "@/hooks/orders/useOrders";
+import { toast } from "sonner";
 
-// Mock data
-const mockGroupSummary = {
-  id: "OG-001",
-  status: "processing",
-  total_amount: 1250.50,
-  payment_status: "paid",
-  order_count: 3,
-};
-
-const mockOrders = [
-  {
-    id: "ORD-001",
-    order_number: "ORD-2024-001",
-    vendor_id: "VEN-123",
-    vendor_name: "Fresh Mart",
-    delivery_boy_id: "DB-001",
-    delivery_boy_name: "John Doe",
-    status: "out_for_delivery",
-    payment_status: "paid",
-    total_amount: 450.50,
-    total_commission: 45.05,
-    vendor_payout: 405.45,
-    created_at: "2024-02-10T10:30:00Z",
-  },
-  {
-    id: "ORD-002",
-    order_number: "ORD-2024-002",
-    vendor_id: "VEN-456",
-    vendor_name: "Veggie World",
-    delivery_boy_id: "DB-002",
-    delivery_boy_name: "Jane Smith",
-    status: "delivered",
-    payment_status: "paid",
-    total_amount: 600.00,
-    total_commission: 60.00,
-    vendor_payout: 540.00,
-    created_at: "2024-02-10T10:35:00Z",
-  },
-  {
-    id: "ORD-003",
-    order_number: "ORD-2024-003",
-    vendor_id: "VEN-789",
-    vendor_name: "Dairy Plus",
-    delivery_boy_id: null,
-    delivery_boy_name: null,
-    status: "ready_for_pickup",
-    payment_status: "paid",
-    total_amount: 200.00,
-    total_commission: 20.00,
-    vendor_payout: 180.00,
-    created_at: "2024-02-10T10:40:00Z",
-  },
-];
-
-const statusColors = {
-  pending: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400",
-  confirmed: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400",
-  processing: "bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-400",
-  ready_for_pickup: "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400",
-  picked_up: "bg-cyan-100 text-cyan-800 dark:bg-cyan-900/30 dark:text-cyan-400",
-  out_for_delivery: "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400",
-  delivered: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
+const statusColors: Record<string, string> = {
+  pending:
+    "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400",
+  confirmed:
+    "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400",
+  processing:
+    "bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-400",
+  ready_for_pickup:
+    "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400",
+  picked_up:
+    "bg-cyan-100 text-cyan-800 dark:bg-cyan-900/30 dark:text-cyan-400",
+  out_for_delivery:
+    "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400",
+  delivered:
+    "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
   cancelled: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
-  refunded: "bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400",
+  refunded:
+    "bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400",
 };
 
-const paymentStatusColors = {
-  pending: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400",
+const paymentStatusColors: Record<string, string> = {
+  pending:
+    "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400",
   paid: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
   failed: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
-  refunded: "bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400",
+  refunded:
+    "bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400",
 };
 
-// { params }: { params: { groupId: string } }
 export default function OrdersPage() {
-  const [orders, setOrders] = useState(mockOrders);
+  const { groupId } = useParams<{ groupId: string }>();
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
   const [newStatus, setNewStatus] = useState<string>("");
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
-  const {groupId} = useParams();
+
+  const { data: orderGroup, isLoading, error } = useOrderGroup(groupId);
+  const updateStatus = useUpdateOrderStatus();
+
+  const orders = orderGroup?.orders ?? [];
 
   const handleStatusChange = (orderId: string, currentStatus: string) => {
     setEditingOrderId(orderId);
@@ -121,13 +84,19 @@ export default function OrdersPage() {
     setShowConfirmDialog(true);
   };
 
-  const confirmStatusUpdate = () => {
-    if (editingOrderId && newStatus) {
-      setOrders(orders.map(order => 
-        order.id === editingOrderId 
-          ? { ...order, status: newStatus as any }
-          : order
-      ));
+  const confirmStatusUpdate = async () => {
+    if (!editingOrderId || !newStatus) return;
+    try {
+      await updateStatus.mutateAsync({
+        orderId: editingOrderId,
+        status: newStatus,
+        description: `Status updated to ${newStatus.replace(/_/g, " ")} by admin`,
+      });
+      toast.success("Order status updated successfully");
+    } catch (err) {
+      toast.error("Failed to update order status");
+      console.error(err);
+    } finally {
       setEditingOrderId(null);
       setNewStatus("");
       setShowConfirmDialog(false);
@@ -161,28 +130,53 @@ export default function OrdersPage() {
             <CardTitle>Group Summary</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid gap-4 md:grid-cols-4">
-              <div>
-                <p className="text-sm text-muted-foreground">Group Status</p>
-                <Badge className={statusColors[mockGroupSummary.status]}>
-                  {mockGroupSummary.status}
-                </Badge>
+            {isLoading ? (
+              <div className="grid gap-4 md:grid-cols-4">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <Skeleton key={i} className="h-12 w-full" />
+                ))}
               </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Total Amount</p>
-                <p className="text-2xl font-bold">₹{mockGroupSummary.total_amount.toFixed(2)}</p>
+            ) : error ? (
+              <p className="text-destructive">
+                Failed to load order group details.
+              </p>
+            ) : orderGroup ? (
+              <div className="grid gap-4 md:grid-cols-4">
+                <div>
+                  <p className="text-sm text-muted-foreground">Group Status</p>
+                  <Badge
+                    className={
+                      statusColors[orderGroup.status] ?? statusColors.pending
+                    }
+                  >
+                    {orderGroup.status}
+                  </Badge>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Total Amount</p>
+                  <p className="text-2xl font-bold">
+                    ₹{Number(orderGroup.total_amount).toFixed(2)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">
+                    Payment Status
+                  </p>
+                  <Badge
+                    className={
+                      paymentStatusColors[orderGroup.payment_status] ??
+                      paymentStatusColors.pending
+                    }
+                  >
+                    {orderGroup.payment_status}
+                  </Badge>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Total Orders</p>
+                  <p className="text-2xl font-bold">{orders.length}</p>
+                </div>
               </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Payment Status</p>
-                <Badge className={paymentStatusColors[mockGroupSummary.payment_status]}>
-                  {mockGroupSummary.payment_status}
-                </Badge>
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Total Orders</p>
-                <p className="text-2xl font-bold">{mockGroupSummary.order_count}</p>
-              </div>
-            </div>
+            ) : null}
           </CardContent>
         </Card>
 
@@ -209,97 +203,179 @@ export default function OrdersPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {orders.map((order) => (
-                    <TableRow key={order.id}>
-                      <TableCell className="font-medium">
-                        {order.order_number}
-                      </TableCell>
-                      <TableCell>
-                        <div>
-                          <p className="font-medium">{order.vendor_name}</p>
-                          <p className="text-xs text-muted-foreground">{order.vendor_id}</p>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        {order.delivery_boy_name ? (
-                          <div>
-                            <p className="font-medium">{order.delivery_boy_name}</p>
-                            <p className="text-xs text-muted-foreground">{order.delivery_boy_id}</p>
-                          </div>
-                        ) : (
-                          <span className="text-muted-foreground">Not Assigned</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {editingOrderId === order.id ? (
-                          <div className="flex items-center gap-2">
-                            <Select value={newStatus} onValueChange={setNewStatus}>
-                              <SelectTrigger className="w-[180px]">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="pending">Pending</SelectItem>
-                                <SelectItem value="confirmed">Confirmed</SelectItem>
-                                <SelectItem value="processing">Processing</SelectItem>
-                                <SelectItem value="ready_for_pickup">Ready for Pickup</SelectItem>
-                                <SelectItem value="picked_up">Picked Up</SelectItem>
-                                <SelectItem value="out_for_delivery">Out for Delivery</SelectItem>
-                                <SelectItem value="delivered">Delivered</SelectItem>
-                                <SelectItem value="cancelled">Cancelled</SelectItem>
-                                <SelectItem value="refunded">Refunded</SelectItem>
-                              </SelectContent>
-                            </Select>
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              onClick={handleSaveStatus}
-                            >
-                              <Check className="h-4 w-4 text-green-600" />
-                            </Button>
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              onClick={() => {
-                                setEditingOrderId(null);
-                                setNewStatus("");
-                              }}
-                            >
-                              <X className="h-4 w-4 text-red-600" />
-                            </Button>
-                          </div>
-                        ) : (
-                          <div
-                            className="cursor-pointer"
-                            onClick={() => handleStatusChange(order.id, order.status)}
-                          >
-                            <Badge className={statusColors[order.status]}>
-                              {order.status.replace(/_/g, " ")}
-                            </Badge>
-                          </div>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <Badge className={paymentStatusColors[order.payment_status]}>
-                          {order.payment_status}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="font-semibold">
-                        ₹{order.total_amount.toFixed(2)}
-                      </TableCell>
-                      <TableCell>₹{order.total_commission.toFixed(2)}</TableCell>
-                      <TableCell>₹{order.vendor_payout.toFixed(2)}</TableCell>
-                      <TableCell>
-                        {new Date(order.created_at).toLocaleString()}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Link href={`/admin/order-groups/${groupId}/orders/${order.id}`}>
-                          <Button variant="outline" size="sm">
-                            View Details
-                          </Button>
-                        </Link>
+                  {isLoading ? (
+                    Array.from({ length: 3 }).map((_, i) => (
+                      <TableRow key={i}>
+                        {Array.from({ length: 10 }).map((_, j) => (
+                          <TableCell key={j}>
+                            <Skeleton className="h-4 w-full" />
+                          </TableCell>
+                        ))}
+                      </TableRow>
+                    ))
+                  ) : error ? (
+                    <TableRow>
+                      <TableCell
+                        colSpan={10}
+                        className="text-center text-destructive py-8"
+                      >
+                        Failed to load orders. Please try again.
                       </TableCell>
                     </TableRow>
-                  ))}
+                  ) : !orders.length ? (
+                    <TableRow>
+                      <TableCell
+                        colSpan={10}
+                        className="text-center text-muted-foreground py-8"
+                      >
+                        No orders found in this group.
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    orders.map((order) => (
+                      <TableRow key={order.id}>
+                        <TableCell className="font-medium">
+                          {order.order_number}
+                        </TableCell>
+                        <TableCell>
+                          <div>
+                            <p className="font-medium">
+                              {order.vendors?.store_name ?? "—"}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {order.vendor_id}
+                            </p>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          {order.delivery_boys ? (
+                            <div>
+                              <p className="font-medium">
+                                {order.delivery_boys.first_name}{" "}
+                                {order.delivery_boys.last_name}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                {order.delivery_boy_id}
+                              </p>
+                            </div>
+                          ) : (
+                            <span className="text-muted-foreground">
+                              Not Assigned
+                            </span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {editingOrderId === order.id ? (
+                            <div className="flex items-center gap-2">
+                              <Select
+                                value={newStatus}
+                                onValueChange={setNewStatus}
+                              >
+                                <SelectTrigger className="w-[180px]">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="pending">
+                                    Pending
+                                  </SelectItem>
+                                  <SelectItem value="confirmed">
+                                    Confirmed
+                                  </SelectItem>
+                                  <SelectItem value="processing">
+                                    Processing
+                                  </SelectItem>
+                                  <SelectItem value="ready_for_pickup">
+                                    Ready for Pickup
+                                  </SelectItem>
+                                  <SelectItem value="picked_up">
+                                    Picked Up
+                                  </SelectItem>
+                                  <SelectItem value="out_for_delivery">
+                                    Out for Delivery
+                                  </SelectItem>
+                                  <SelectItem value="delivered">
+                                    Delivered
+                                  </SelectItem>
+                                  <SelectItem value="cancelled">
+                                    Cancelled
+                                  </SelectItem>
+                                  <SelectItem value="refunded">
+                                    Refunded
+                                  </SelectItem>
+                                </SelectContent>
+                              </Select>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                onClick={handleSaveStatus}
+                                disabled={updateStatus.isPending}
+                              >
+                                <Check className="h-4 w-4 text-green-600" />
+                              </Button>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                onClick={() => {
+                                  setEditingOrderId(null);
+                                  setNewStatus("");
+                                }}
+                                disabled={updateStatus.isPending}
+                              >
+                                <X className="h-4 w-4 text-red-600" />
+                              </Button>
+                            </div>
+                          ) : (
+                            <div
+                              className="cursor-pointer"
+                              onClick={() =>
+                                handleStatusChange(order.id, order.status)
+                              }
+                            >
+                              <Badge
+                                className={
+                                  statusColors[order.status] ??
+                                  statusColors.pending
+                                }
+                              >
+                                {order.status.replace(/_/g, " ")}
+                              </Badge>
+                            </div>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <Badge
+                            className={
+                              paymentStatusColors[order.payment_status] ??
+                              paymentStatusColors.pending
+                            }
+                          >
+                            {order.payment_status}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="font-semibold">
+                          ₹{Number(order.total_amount).toFixed(2)}
+                        </TableCell>
+                        <TableCell>
+                          ₹{Number(order.total_commission ?? 0).toFixed(2)}
+                        </TableCell>
+                        <TableCell>
+                          ₹{Number(order.vendor_payout ?? 0).toFixed(2)}
+                        </TableCell>
+                        <TableCell>
+                          {new Date(order.created_at).toLocaleString()}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Link
+                            href={`/admin/order-groups/${groupId}/orders/${order.id}`}
+                          >
+                            <Button variant="outline" size="sm">
+                              View Details
+                            </Button>
+                          </Link>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
                 </TableBody>
               </Table>
             </div>
@@ -313,14 +389,26 @@ export default function OrdersPage() {
               <DialogTitle>Confirm Status Update</DialogTitle>
               <DialogDescription>
                 Are you sure you want to update the order status to{" "}
-                <span className="font-semibold">{newStatus?.replace(/_/g, " ")}</span>?
+                <span className="font-semibold">
+                  {newStatus?.replace(/_/g, " ")}
+                </span>
+                ?
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setShowConfirmDialog(false)}>
+              <Button
+                variant="outline"
+                onClick={() => setShowConfirmDialog(false)}
+                disabled={updateStatus.isPending}
+              >
                 Cancel
               </Button>
-              <Button onClick={confirmStatusUpdate}>Confirm</Button>
+              <Button
+                onClick={confirmStatusUpdate}
+                disabled={updateStatus.isPending}
+              >
+                {updateStatus.isPending ? "Updating…" : "Confirm"}
+              </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>

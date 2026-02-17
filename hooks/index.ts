@@ -5,6 +5,7 @@ export { queryKeys } from './query-keys';
 
 // Vendors
 export * from './vendors/useVendors';
+export * from './vendors/useKycDocuments';
 
 // Customers
 export * from './customers/useCustomers';
