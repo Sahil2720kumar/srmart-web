@@ -1,20 +1,33 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { ArrowLeft, Edit, Power, PowerOff, Trash2, Calendar, TrendingUp, Package, Users } from 'lucide-react';
+import {
+  ArrowLeft,
+  Pencil,
+  Trash2,
+  Ban,
+  CheckCircle,
+  Loader2,
+  Info,
+  Calendar,
+  TrendingUp,
+  Package,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Switch } from '@/components/ui/switch';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Separator } from '@/components/ui/separator';
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import {
   Table,
   TableBody,
@@ -23,654 +36,487 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import Link from 'next/link';
+import { toast } from 'sonner';
+import {
+  useCoupon,
+  useCouponStats,
+  useCouponUsage,
+  useCouponApplicableProducts,
+  useToggleCouponStatus,
+  useDeleteCoupon,
+} from '@/hooks';
 
-export const mockCoupons = [
-  {
-    id: '1',
-    code: 'WELCOME20',
-    description: 'Get 20% off on your first order',
-    discountType: 'percentage',
-    discountValue: 20,
-    maxDiscountAmount: 100,
-    minOrderAmount: 299,
-    applicableTo: 'all',
-    usageLimitPerUser: 1,
-    usageCount: 156,
-    freeDelivery: false,
-    startDate: new Date('2025-02-01'),
-    endDate: new Date('2026-02-28'),
-    isActive: true,
-    createdAt: new Date('2025-01-28'),
-    updatedAt: new Date('2025-02-10'),
-  },
-  {
-    id: '2',
-    code: 'SAVE50',
-    description: 'Save ₹50 on orders above ₹250',
-    discountType: 'flat',
-    discountValue: 50,
-    minOrderAmount: 250,
-    applicableTo: 'all',
-    usageLimitPerUser: 1,
-    usageCount: 423,
-    freeDelivery: false,
-    startDate: new Date('2025-02-11'),
-    endDate: new Date('2025-02-15'),
-    isActive: true,
-    createdAt: new Date('2025-02-09'),
-    updatedAt: new Date('2025-02-13'),
-  },
-  {
-    id: '3',
-    code: 'MEGA30',
-    description: 'Get 30% off up to ₹150',
-    discountType: 'percentage',
-    discountValue: 30,
-    maxDiscountAmount: 150,
-    minOrderAmount: 500,
-    applicableTo: 'all',
-    usageLimitPerUser: 1,
-    usageCount: 789,
-    freeDelivery: true,
-    startDate: new Date('2025-02-01'),
-    endDate: new Date('2026-03-15'),
-    isActive: true,
-    createdAt: new Date('2025-01-25'),
-    updatedAt: new Date('2025-02-12'),
-  },
-  {
-    id: '4',
-    code: 'VEG20',
-    description: '20% off on Vegetables',
-    discountType: 'percentage',
-    discountValue: 20,
-    maxDiscountAmount: 120,
-    minOrderAmount: 199,
-    applicableTo: 'category',
-    applicableId: '11111111-1111-1111-1111-111111111111',
-    applicableItems: ['Vegetables', 'Fresh Produce'],
-    usageLimitPerUser: 1,
-    usageCount: 234,
-    freeDelivery: false,
-    startDate: new Date('2025-02-01'),
-    endDate: new Date('2026-03-31'),
-    isActive: true,
-    createdAt: new Date('2025-01-30'),
-    updatedAt: new Date('2025-02-08'),
-  },
-  {
-    id: '5',
-    code: 'DAIRY50',
-    description: 'Flat ₹50 off on Dairy products',
-    discountType: 'flat',
-    discountValue: 50,
-    minOrderAmount: 299,
-    applicableTo: 'category',
-    applicableId: '22222222-2222-2222-2222-222222222222',
-    applicableItems: ['Dairy', 'Milk Products'],
-    usageLimitPerUser: 1,
-    usageCount: 567,
-    freeDelivery: false,
-    startDate: new Date('2025-02-01'),
-    endDate: new Date('2026-02-28'),
-    isActive: true,
-    createdAt: new Date('2025-01-28'),
-    updatedAt: new Date('2025-02-11'),
-  },
-  {
-    id: '6',
-    code: 'VENDOR10',
-    description: '10% off from selected vendor',
-    discountType: 'percentage',
-    discountValue: 10,
-    maxDiscountAmount: 100,
-    minOrderAmount: 300,
-    applicableTo: 'vendor',
-    applicableId: '33333333-3333-3333-3333-333333333333',
-    applicableItems: ['Fresh Market'],
-    usageLimit: 500,
-    usageLimitPerUser: 3,
-    usageCount: 189,
-    freeDelivery: false,
-    startDate: new Date('2025-02-01'),
-    endDate: new Date('2026-03-15'),
-    isActive: true,
-    createdAt: new Date('2025-01-29'),
-    updatedAt: new Date('2025-02-10'),
-  },
-  {
-    id: '7',
-    code: 'SHOP100',
-    description: 'Flat ₹100 off from SuperMart',
-    discountType: 'flat',
-    discountValue: 100,
-    minOrderAmount: 500,
-    applicableTo: 'vendor',
-    applicableId: '44444444-4444-4444-4444-444444444444',
-    applicableItems: ['SuperMart'],
-    usageLimitPerUser: 1,
-    usageCount: 345,
-    freeDelivery: true,
-    startDate: new Date('2025-02-01'),
-    endDate: new Date('2026-02-20'),
-    isActive: true,
-    createdAt: new Date('2025-01-27'),
-    updatedAt: new Date('2025-02-09'),
-  },
-  {
-    id: '8',
-    code: 'EXPIRED10',
-    description: 'Old campaign discount',
-    discountType: 'percentage',
-    discountValue: 10,
-    minOrderAmount: 500,
-    applicableTo: 'all',
-    usageLimit: 1000,
-    usageLimitPerUser: 1,
-    usageCount: 998,
-    freeDelivery: false,
-    startDate: new Date('2024-11-01'),
-    endDate: new Date('2025-01-31'),
-    isActive: false,
-    createdAt: new Date('2024-10-25'),
-    updatedAt: new Date('2025-01-31'),
-  },
-];
+// ─── Types ────────────────────────────────────────────────────────────────────
 
-export const mockCouponUsage = [
-  {
-    id: '1',
-    couponId: '1',
-    customerId: 'c1',
-    customerName: 'Rajesh Kumar',
-    orderId: 'ORD-2025-001234',
-    discountAmount: 59.8,
-    usedAt: new Date('2025-02-13T10:30:00'),
-  },
-  {
-    id: '2',
-    couponId: '1',
-    customerId: 'c2',
-    customerName: 'Priya Sharma',
-    orderId: 'ORD-2025-001235',
-    discountAmount: 100,
-    usedAt: new Date('2025-02-13T11:15:00'),
-  },
-  {
-    id: '3',
-    couponId: '1',
-    customerId: 'c3',
-    customerName: 'Amit Patel',
-    orderId: 'ORD-2025-001236',
-    discountAmount: 85,
-    usedAt: new Date('2025-02-13T14:20:00'),
-  },
-  {
-    id: '4',
-    couponId: '2',
-    customerId: 'c4',
-    customerName: 'Sneha Reddy',
-    orderId: 'ORD-2025-001237',
-    discountAmount: 50,
-    usedAt: new Date('2025-02-12T09:45:00'),
-  },
-  {
-    id: '5',
-    couponId: '2',
-    customerId: 'c5',
-    customerName: 'Vikram Singh',
-    orderId: 'ORD-2025-001238',
-    discountAmount: 50,
-    usedAt: new Date('2025-02-12T16:30:00'),
-  },
-  {
-    id: '6',
-    couponId: '3',
-    customerId: 'c6',
-    customerName: 'Deepa Nair',
-    orderId: 'ORD-2025-001239',
-    discountAmount: 150,
-    usedAt: new Date('2025-02-11T13:20:00'),
-  },
-  {
-    id: '7',
-    couponId: '4',
-    customerId: 'c7',
-    customerName: 'Arun Menon',
-    orderId: 'ORD-2025-001240',
-    discountAmount: 39.8,
-    usedAt: new Date('2025-02-10T15:45:00'),
-  },
-  {
-    id: '8',
-    couponId: '6',
-    customerId: 'c8',
-    customerName: 'Kavita Desai',
-    orderId: 'ORD-2025-001241',
-    discountAmount: 100,
-    usedAt: new Date('2025-02-09T11:30:00'),
-  },
-];
+type CouponStatus = 'upcoming' | 'active' | 'expired' | 'inactive';
 
-interface CouponUsage {
-  id: string;
-  couponId: string;
-  customerId: string;
-  customerName: string;
-  orderId: string;
-  discountAmount: number;
-  usedAt: Date;
+// ─── Badge styles (mirrors offer detail page) ─────────────────────────────────
+
+const statusColors: Record<CouponStatus, string> = {
+  active:   'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400',
+  upcoming: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400',
+  expired:  'bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400',
+  inactive: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400',
+};
+
+const discountTypeColors: Record<string, string> = {
+  percentage: 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400',
+  flat:       'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400',
+};
+
+const applicableToColors: Record<string, string> = {
+  all:      'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-400',
+  category: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400',
+  vendor:   'bg-violet-100 text-violet-800 dark:bg-violet-900/30 dark:text-violet-400',
+  subcategory: 'bg-teal-100 text-teal-800 dark:bg-teal-900/30 dark:text-teal-400',
+  product:  'bg-cyan-100 text-cyan-800 dark:bg-cyan-900/30 dark:text-cyan-400',
+};
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function formatDate(d: string | null): string {
+  if (!d) return 'No expiry';
+  return new Date(d).toLocaleDateString('en-US', {
+    month: 'long', day: 'numeric', year: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  });
 }
 
-interface Coupon {
-  id: string;
-  code: string;
-  description: string;
-  discountType: 'percentage' | 'flat' | 'bogo';
-  discountValue: number;
-  maxDiscountAmount?: number;
-  minOrderAmount: number;
-  applicableTo: 'all' | 'category' | 'vendor' | 'product';
-  applicableId?: string;
-  applicableItems?: string[];
-  usageLimit?: number;
-  usageLimitPerUser: number;
-  usageCount: number;
-  freeDelivery: boolean;
-  startDate: Date;
-  endDate: Date;
-  isActive: boolean;
-  createdAt: Date;
-  updatedAt: Date;
-}
+// ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function CouponDetailPage() {
-  const router = useRouter();
-  const params = useParams();
+  const router   = useRouter();
+  const params   = useParams();
   const couponId = params.couponId as string;
 
-  const [coupon, setCoupon] = useState<Coupon | null>(null);
-  const [usageHistory, setUsageHistory] = useState<CouponUsage[]>([]);
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [showDelete, setShowDelete] = useState(false);
 
-  useEffect(() => {
-    const found = mockCoupons.find((c) => c.id === couponId);
-    if (found) {
-      setCoupon(found);
-      const history = mockCouponUsage.filter((u) => u.couponId === couponId);
-      setUsageHistory(history);
-    }
-  }, [couponId]);
+  // ── Queries ────────────────────────────────────────────────────────────────
+  const { data: coupon,   isLoading: couponLoading  } = useCoupon(couponId);
+  const { data: stats,    isLoading: statsLoading   } = useCouponStats(couponId);
+  const { data: products, isLoading: productsLoading } = useCouponApplicableProducts(couponId);
+  const { data: usageHistory = [] }                    = useCouponUsage(couponId);
+
+  // ── Mutations ──────────────────────────────────────────────────────────────
+  const toggleStatus = useToggleCouponStatus();
+  const deleteCoupon = useDeleteCoupon();
+
+  const handleToggleStatus = () => {
+    if (!coupon) return;
+    toggleStatus.mutate(
+      { id: coupon.id, is_active: !coupon.is_active },
+      {
+        onSuccess: () => toast.success(`Coupon ${coupon.is_active ? 'deactivated' : 'activated'}`),
+        onError:   () => toast.error('Failed to update status'),
+      },
+    );
+  };
+
+  const handleDelete = () => {
+    if (!coupon) return;
+    deleteCoupon.mutate(coupon.id, {
+      onSuccess: () => { toast.success('Coupon deleted'); router.push('/admin/coupons'); },
+      onError:   () => toast.error('Failed to delete coupon'),
+    });
+  };
+
+  const getDiscountDisplay = () => {
+    if (!coupon) return '—';
+    return coupon.discount_type === 'percentage'
+      ? `${coupon.discount_value}%`
+      : `₹${coupon.discount_value}`;
+  };
+
+  // ── Loading ────────────────────────────────────────────────────────────────
+  if (couponLoading || statsLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-primary" />
+          <p className="text-muted-foreground">Loading coupon details…</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!coupon) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-center space-y-3">
-          <h2 className="text-2xl font-bold">Coupon Not Found</h2>
-          <p className="text-muted-foreground">The coupon you're looking for doesn't exist.</p>
-          <Button onClick={() => router.push('/admin/coupons')}>
-            Back to Coupons
+        <div className="text-center">
+          <h2 className="text-2xl font-bold mb-2">Coupon Not Found</h2>
+          <p className="text-muted-foreground mb-4">The coupon you're looking for doesn't exist.</p>
+          <Button asChild>
+            <Link href="/admin/coupons"><ArrowLeft className="mr-2 h-4 w-4" /> Back to Coupons</Link>
           </Button>
         </div>
       </div>
     );
   }
 
-  const handleToggleActive = () => {
-    setCoupon((prev) => prev ? { ...prev, isActive: !prev.isActive, updatedAt: new Date() } : null);
-  };
+  const status = (stats?.status ?? 'inactive') as CouponStatus;
 
-  const handleDelete = () => {
-    setDeleteDialogOpen(false);
-    router.push('/admin/coupons');
-  };
-
-  const getStatusBadge = () => {
-    if (!coupon.isActive) {
-      return (
-        <Badge variant="secondary" className="text-base px-4 py-1">
-          Disabled
-        </Badge>
-      );
-    }
-    if (new Date() > coupon.endDate) {
-      return (
-        <Badge variant="destructive" className="text-base px-4 py-1">
-          Expired
-        </Badge>
-      );
-    }
-    return (
-      <Badge className="bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))] text-base px-4 py-1">
-        Active
-      </Badge>
-    );
-  };
-
-  const getDiscountDisplay = () => {
-    if (coupon.discountType === 'percentage') {
-      return `${coupon.discountValue}%`;
-    } else if (coupon.discountType === 'flat') {
-      return `₹${coupon.discountValue}`;
-    } else {
-      return 'BOGO';
-    }
-  };
-
-  const getUsagePercentage = () => {
-    if (!coupon.usageLimit) return 0;
-    return (coupon.usageCount / coupon.usageLimit) * 100;
-  };
-
-  const formatDate = (date: Date) => {
-    return date.toLocaleDateString('en-IN', { 
-      day: '2-digit', 
-      month: 'short', 
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  };
-
+  // ── JSX ────────────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-background p-4 md:p-8">
-      <div className="max-w-[1400px] mx-auto space-y-6">
-        {/* Header */}
-        <div className="flex flex-col gap-4">
+    <div className="min-h-screen bg-background">
+      <div className="mx-auto max-w-7xl space-y-6">
+
+        {/* ── Header ── */}
+        <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-4">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => router.push('/admin/coupons')}
-            >
-              <ArrowLeft className="h-5 w-5" />
+            <Button variant="outline" size="icon" asChild>
+              <Link href="/admin/coupons"><ArrowLeft className="h-4 w-4" /></Link>
             </Button>
-            <div className="flex-1">
-              <div className="flex items-center gap-3 flex-wrap">
-                <h1 className="text-4xl md:text-5xl font-bold font-mono tracking-tight">
-                  {coupon.code}
-                </h1>
-                {getStatusBadge()}
+            <div>
+              <h1 className="text-3xl font-bold font-mono tracking-tight">{coupon.code}</h1>
+              {coupon.description && (
+                <p className="text-sm text-muted-foreground mt-1">{coupon.description}</p>
+              )}
+              <div className="flex items-center gap-2 mt-2">
+                <Badge className={statusColors[status]}>{status}</Badge>
+                <Badge className={discountTypeColors[coupon.discount_type] ?? ''}>
+                  {coupon.discount_type}
+                </Badge>
+                <Badge className={applicableToColors[coupon.applicable_to ?? 'all']}>
+                  {coupon.applicable_to ?? 'all'}
+                </Badge>
               </div>
-              <p className="text-muted-foreground mt-2">
-                {coupon.description}
-              </p>
             </div>
-            <div className="flex items-center gap-2">
-              <Switch
-                checked={coupon.isActive}
-                onCheckedChange={handleToggleActive}
-                disabled={new Date() > coupon.endDate}
-              />
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={() => router.push(`/admin/coupons/${coupon.id}/edit`)}
-              >
-                <Edit className="h-4 w-4" />
-              </Button>
-            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={handleToggleStatus}
+              disabled={toggleStatus.isPending}
+            >
+              {toggleStatus.isPending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : coupon.is_active ? (
+                <><Ban className="mr-2 h-4 w-4" /> Deactivate</>
+              ) : (
+                <><CheckCircle className="mr-2 h-4 w-4" /> Activate</>
+              )}
+            </Button>
+            <Button asChild>
+              <Link href={`/admin/coupons/add?edit=${coupon.id}`}>
+                <Pencil className="mr-2 h-4 w-4" /> Edit Coupon
+              </Link>
+            </Button>
           </div>
         </div>
 
-        {/* Summary Cards */}
-        <div className="grid gap-6 md:grid-cols-3">
-          {/* Card 1 - Discount Info */}
-          <Card className="border-[hsl(var(--primary))]/20">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                <Package className="h-4 w-4" />
-                Discount Information
+        {/* ── Info cards ── */}
+        <div className="grid gap-4 md:grid-cols-3">
+
+          {/* Card 1: Discount details */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-2">
+                <Package className="h-4 w-4" /> Discount Details
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="flex justify-between items-center">
-                <span className="text-sm">Type</span>
-                <Badge variant="outline" className="capitalize font-semibold">
-                  {coupon.discountType}
-                </Badge>
+            <Separator />
+            <CardContent className="pt-4 space-y-3">
+              <div>
+                <p className="text-xs text-muted-foreground">Type</p>
+                <p className="font-medium capitalize mt-0.5">{coupon.discount_type}</p>
               </div>
-              <div className="flex justify-between items-center">
-                <span className="text-sm">Value</span>
-                <span className="text-2xl font-bold text-[hsl(var(--primary))]">
-                  {getDiscountDisplay()}
-                </span>
+              <div>
+                <p className="text-xs text-muted-foreground">Value</p>
+                <p className="font-bold text-2xl text-primary mt-0.5">{getDiscountDisplay()}</p>
               </div>
-              {coupon.maxDiscountAmount && (
-                <div className="flex justify-between items-center">
-                  <span className="text-sm">Max Discount</span>
-                  <span className="font-semibold">₹{coupon.maxDiscountAmount}</span>
+              {coupon.max_discount_amount && (
+                <div>
+                  <p className="text-xs text-muted-foreground">Max Discount</p>
+                  <p className="font-semibold mt-0.5">₹{coupon.max_discount_amount}</p>
                 </div>
               )}
-              <div className="flex justify-between items-center">
-                <span className="text-sm">Free Delivery</span>
-                <Badge 
-                  className={coupon.freeDelivery 
-                    ? "bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]" 
-                    : ""}
-                  variant={coupon.freeDelivery ? "default" : "secondary"}
-                >
-                  {coupon.freeDelivery ? 'Yes' : 'No'}
+              <div>
+                <p className="text-xs text-muted-foreground">Min Order Amount</p>
+                <p className="font-semibold font-mono mt-0.5">₹{coupon.min_order_amount}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Free Delivery</p>
+                <Badge variant={coupon.includes_free_delivery ? 'default' : 'secondary'}>
+                  {coupon.includes_free_delivery ? 'Yes' : 'No'}
                 </Badge>
               </div>
             </CardContent>
           </Card>
 
-          {/* Card 2 - Rules */}
-          <Card className="border-[hsl(var(--chart-2))]/20">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                <TrendingUp className="h-4 w-4" />
-                Usage Rules
+          {/* Card 2: Scope & Usage */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-2">
+                <TrendingUp className="h-4 w-4" /> Scope & Usage
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="flex justify-between items-center">
-                <span className="text-sm">Min Order</span>
-                <span className="font-semibold">₹{coupon.minOrderAmount}</span>
+            <Separator />
+            <CardContent className="pt-4 space-y-3">
+              <div>
+                <p className="text-xs text-muted-foreground">Applicable To</p>
+                <p className="font-medium capitalize mt-0.5">{coupon.applicable_to ?? 'All'}</p>
               </div>
-              <div className="flex justify-between items-center">
-                <span className="text-sm">Total Limit</span>
-                <span className="font-semibold">
-                  {coupon.usageLimit ? coupon.usageLimit.toLocaleString() : 'Unlimited'}
-                </span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-sm">Per User</span>
-                <span className="font-semibold">{coupon.usageLimitPerUser}x</span>
-              </div>
-              <div className="pt-2 border-t">
-                <div className="flex justify-between items-center mb-2">
-                  <span className="text-sm font-medium">Current Usage</span>
-                  <span className="text-xl font-bold text-[hsl(var(--primary))]">
-                    {coupon.usageCount.toLocaleString()}
-                  </span>
+              {coupon.applicable_id && (
+                <div>
+                  <p className="text-xs text-muted-foreground">Scope ID</p>
+                  <p className="font-mono text-xs text-muted-foreground break-all mt-0.5">
+                    {coupon.applicable_id}
+                  </p>
                 </div>
-                {coupon.usageLimit && (
-                  <div className="space-y-1">
-                    <div className="w-full bg-muted rounded-full h-2 overflow-hidden">
-                      <div
-                        className="bg-[hsl(var(--primary))] h-full transition-all duration-500"
-                        style={{ width: `${Math.min(getUsagePercentage(), 100)}%` }}
-                      />
+              )}
+              {stats && (
+                <>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Applicable Products</p>
+                    <p className="font-medium mt-0.5">{stats.products_count}</p>
+                  </div>
+                  {stats.days_remaining !== null && (
+                    <div>
+                      <p className="text-xs text-muted-foreground">Days Remaining</p>
+                      <p className="font-medium mt-0.5">
+                        {stats.days_remaining > 0 ? `${stats.days_remaining} days` : 'Expired'}
+                      </p>
                     </div>
-                    <p className="text-xs text-muted-foreground text-right">
-                      {coupon.usageLimit - coupon.usageCount} remaining
-                    </p>
+                  )}
+                </>
+              )}
+              <div>
+                <p className="text-xs text-muted-foreground">Usage</p>
+                <p className="font-medium mt-0.5">
+                  {coupon.usage_count ?? 0}
+                  {coupon.usage_limit ? ` / ${coupon.usage_limit}` : ' (unlimited)'}
+                </p>
+                {coupon.usage_limit && (
+                  <div className="w-full bg-muted rounded-full h-1.5 mt-1.5 overflow-hidden">
+                    <div
+                      className="bg-primary h-full transition-all"
+                      style={{
+                        width: `${Math.min(
+                          ((coupon.usage_count ?? 0) / coupon.usage_limit) * 100,
+                          100,
+                        )}%`,
+                      }}
+                    />
                   </div>
                 )}
               </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Per User Limit</p>
+                <p className="font-medium mt-0.5">{coupon.usage_limit_per_user}x</p>
+              </div>
             </CardContent>
           </Card>
 
-          {/* Card 3 - Validity */}
-          <Card className="border-[hsl(var(--chart-3))]/20">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                <Calendar className="h-4 w-4" />
-                Validity Period
+          {/* Card 3: Schedule */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-2">
+                <Calendar className="h-4 w-4" /> Schedule
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3">
+            <Separator />
+            <CardContent className="pt-4 space-y-3">
               <div>
-                <span className="text-xs text-muted-foreground">Start Date</span>
-                <p className="font-semibold">{formatDate(coupon.startDate)}</p>
+                <p className="text-xs text-muted-foreground">Start Date</p>
+                <p className="font-medium mt-0.5">{formatDate(coupon.start_date)}</p>
               </div>
               <div>
-                <span className="text-xs text-muted-foreground">End Date</span>
-                <p className="font-semibold">{formatDate(coupon.endDate)}</p>
+                <p className="text-xs text-muted-foreground">End Date</p>
+                <p className="font-medium mt-0.5">{formatDate(coupon.end_date)}</p>
               </div>
-              <div className="pt-2 border-t space-y-2">
+              {coupon.created_at && (
                 <div>
-                  <span className="text-xs text-muted-foreground">Created</span>
-                  <p className="text-sm">{formatDate(coupon.createdAt)}</p>
+                  <p className="text-xs text-muted-foreground">Created At</p>
+                  <p className="font-medium mt-0.5">{formatDate(coupon.created_at)}</p>
                 </div>
+              )}
+              {coupon.updated_at && (
                 <div>
-                  <span className="text-xs text-muted-foreground">Last Updated</span>
-                  <p className="text-sm">{formatDate(coupon.updatedAt)}</p>
+                  <p className="text-xs text-muted-foreground">Last Updated</p>
+                  <p className="font-medium mt-0.5">{formatDate(coupon.updated_at)}</p>
                 </div>
-              </div>
+              )}
             </CardContent>
           </Card>
         </div>
 
-        {/* Applicability Section */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Users className="h-5 w-5" />
-              Applicability
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center gap-3 flex-wrap">
-              <span className="text-muted-foreground">Applies to:</span>
-              <Badge 
-                className="capitalize text-base px-3 py-1"
-                variant={coupon.applicableTo === 'all' ? 'default' : 'secondary'}
-              >
-                {coupon.applicableTo}
-              </Badge>
-              {coupon.applicableItems && coupon.applicableItems.length > 0 && (
-                <div className="flex gap-2 flex-wrap">
-                  {coupon.applicableItems.map((item) => (
-                    <Badge key={item} variant="outline" className="text-sm">
-                      {item}
-                    </Badge>
-                  ))}
+        {/* ── Applicable Products Table ── */}
+        {((products && products.length > 0) || productsLoading) && (
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-base">
+                    Products this Coupon Applies To
+                  </CardTitle>
+                  {coupon.applicable_to !== 'product' && (
+                    <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
+                      <Info className="h-3 w-3" />
+                      Products are determined by{' '}
+                      <span className="capitalize font-medium">{coupon.applicable_to}</span>
+                      {coupon.applicable_to === 'all' ? ' — showing first 100' : ''}
+                    </p>
+                  )}
                 </div>
-              )}
-              {coupon.applicableTo === 'all' && (
                 <span className="text-sm text-muted-foreground">
-                  This coupon applies to all products in the store
+                  {productsLoading ? '…' : `${products?.length ?? 0} products`}
                 </span>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Usage History */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Usage History</CardTitle>
-            <p className="text-sm text-muted-foreground">
-              Recent transactions using this coupon
-            </p>
-          </CardHeader>
-          <CardContent>
-            {usageHistory.length === 0 ? (
-              <div className="text-center py-12">
-                <div className="w-16 h-16 mx-auto rounded-full bg-muted flex items-center justify-center mb-4">
-                  <TrendingUp className="h-8 w-8 text-muted-foreground" />
-                </div>
-                <h3 className="text-lg font-semibold mb-2">No Usage Yet</h3>
-                <p className="text-muted-foreground text-sm">
-                  This coupon hasn't been used by any customers yet
-                </p>
               </div>
-            ) : (
-              <div className="overflow-x-auto">
+            </CardHeader>
+            <Separator />
+            <CardContent className="p-0">
+              {productsLoading ? (
+                <div className="py-12 text-center">
+                  <Loader2 className="h-6 w-6 animate-spin mx-auto text-primary" />
+                </div>
+              ) : (
                 <Table>
                   <TableHeader>
-                    <TableRow className="hover:bg-transparent">
-                      <TableHead className="font-semibold">Customer</TableHead>
-                      <TableHead className="font-semibold">Order ID</TableHead>
-                      <TableHead className="font-semibold">Discount</TableHead>
-                      <TableHead className="font-semibold">Used At</TableHead>
+                    <TableRow>
+                      <TableHead>Product</TableHead>
+                      <TableHead>SKU</TableHead>
+                      <TableHead>Category</TableHead>
+                      <TableHead>Vendor</TableHead>
+                      <TableHead className="text-right">Price</TableHead>
+                      <TableHead className="text-right">Stock</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {usageHistory.map((usage) => (
-                      <TableRow key={usage.id}>
-                        <TableCell className="font-medium">{usage.customerName}</TableCell>
+                    {(products ?? []).map((product) => (
+                      <TableRow key={product.id}>
                         <TableCell>
-                          <code className="text-sm bg-muted px-2 py-1 rounded">
-                            {usage.orderId}
-                          </code>
+                          <div className="flex items-center gap-2">
+                            {product.image && (
+                              <img
+                                src={product.image}
+                                alt={product.name}
+                                className="h-10 w-10 rounded object-cover"
+                              />
+                            )}
+                            <span className="font-medium">{product.name}</span>
+                          </div>
                         </TableCell>
-                        <TableCell className="font-semibold text-[hsl(var(--primary))]">
-                          ₹{usage.discountAmount.toFixed(2)}
+                        <TableCell className="text-muted-foreground font-mono text-sm">
+                          {product.sku ?? '—'}
                         </TableCell>
                         <TableCell className="text-muted-foreground">
-                          {formatDate(usage.usedAt)}
+                          {product.category?.name ?? '—'}
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">
+                          {product.vendor?.store_name ?? '—'}
+                        </TableCell>
+                        <TableCell className="text-right font-mono">
+                          ₹{product.price}
+                          {product.discount_price && (
+                            <span className="text-xs text-muted-foreground line-through ml-1">
+                              ₹{product.discount_price}
+                            </span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Badge
+                            variant={(product.stock_quantity ?? 0) > 0 ? 'default' : 'destructive'}
+                          >
+                            {product.stock_quantity ?? 0}
+                          </Badge>
                         </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
                 </Table>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
-        {/* Danger Zone */}
-        <Card className="border-[hsl(var(--destructive))]/30">
+        {/* ── Usage History Table ── */}
+        {usageHistory.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Usage History</CardTitle>
+              <p className="text-sm text-muted-foreground">Recent transactions using this coupon</p>
+            </CardHeader>
+            <Separator />
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Customer</TableHead>
+                    <TableHead>Order</TableHead>
+                    <TableHead className="text-right">Discount</TableHead>
+                    <TableHead className="text-right">Used At</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {(usageHistory as any[]).map((usage) => (
+                    <TableRow key={usage.id}>
+                      <TableCell className="font-medium">
+                        {usage.customers?.first_name} {usage.customers?.last_name}
+                      </TableCell>
+                      <TableCell>
+                        <code className="text-sm bg-muted px-2 py-1 rounded">
+                          {usage.orders?.order_number ?? '—'}
+                        </code>
+                      </TableCell>
+                      <TableCell className="text-right font-semibold text-primary">
+                        ₹{Number(usage.discount_amount).toFixed(2)}
+                      </TableCell>
+                      <TableCell className="text-right text-muted-foreground text-sm">
+                        {formatDate(usage.used_at)}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* ── Danger Zone ── */}
+        <Card className="border-destructive/40">
           <CardHeader>
-            <CardTitle className="text-[hsl(var(--destructive))] flex items-center gap-2">
-              <Trash2 className="h-5 w-5" />
-              Danger Zone
-            </CardTitle>
+            <CardTitle className="text-base text-destructive">Danger Zone</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <p className="text-sm text-muted-foreground">
-              Once you delete a coupon, there is no going back. This will permanently remove
-              the coupon and all its usage history.
-            </p>
-            <Button
-              variant="destructive"
-              onClick={() => setDeleteDialogOpen(true)}
-              className="gap-2"
-            >
-              <Trash2 className="h-4 w-4" />
-              Delete Coupon
-            </Button>
+          <Separator />
+          <CardContent className="pt-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium">Delete this coupon</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Once deleted, this coupon and all usage records cannot be recovered.
+                </p>
+              </div>
+              <Button variant="destructive" size="sm" onClick={() => setShowDelete(true)}>
+                <Trash2 className="mr-2 h-4 w-4" /> Delete Coupon
+              </Button>
+            </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Delete Confirmation Dialog */}
-      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete Coupon</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to delete the coupon <strong>{coupon.code}</strong>? 
-              This action cannot be undone and will permanently remove all associated data.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setDeleteDialogOpen(false)}
+      {/* ── Delete Dialog ── */}
+      <AlertDialog open={showDelete} onOpenChange={setShowDelete}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete &quot;{coupon.code}&quot;?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action is permanent and cannot be undone. The coupon will be immediately removed.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDelete}
+              disabled={deleteCoupon.isPending}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              Cancel
-            </Button>
-            <Button variant="destructive" onClick={handleDelete}>
-              Delete Permanently
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+              {deleteCoupon.isPending ? 'Deleting…' : 'Delete Coupon'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

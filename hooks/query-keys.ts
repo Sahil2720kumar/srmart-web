@@ -154,6 +154,8 @@ export const queryKeys = {
     byCode: (code: string) => [...queryKeys.coupons.all, 'code', code] as const,
     active: () => [...queryKeys.coupons.all, 'active'] as const,
     usage: (couponId: string) => [...queryKeys.coupons.detail(couponId), 'usage'] as const,
+    validate: (code: string, subtotal: number, customerId: string) =>
+      [...queryKeys.coupons.all, 'validate', code, subtotal, customerId] as const,
   },
 
   // Offers
