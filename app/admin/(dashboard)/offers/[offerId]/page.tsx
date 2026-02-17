@@ -4,10 +4,11 @@ import { useState } from "react";
 import {
   ArrowLeft,
   Pencil,
-  Zap,
   Trash2,
   Ban,
   CheckCircle,
+  Loader2,
+  Info,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -34,27 +35,28 @@ import {
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import {
-  MOCK_OFFERS,
-  MOCK_CATEGORIES,
-  MOCK_VENDORS,
-  OfferWithProducts,
-  OfferProduct,
-  getDateStatus,
-  formatDate,
-  DateStatus,
-  OfferType,
-} from "@/lib/mock-data";
+  useOffer,
+  useOfferStats,
+  useOfferProducts,
+  useDeleteOffer,
+  useToggleOfferStatus,
+  useRemoveProductFromOffer,
+} from "@/hooks/products/useOffers";
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+type DateStatus = "upcoming" | "active" | "expired" | "inactive";
 
 // ─── Badge styles ─────────────────────────────────────────────────────────────
 
 const dateStatusColors: Record<DateStatus, string> = {
-  running: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
+  active: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
   upcoming: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400",
   expired: "bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400",
   inactive: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
 };
 
-const offerTypeColors: Record<OfferType, string> = {
+const offerTypeColors: Record<string, string> = {
   discount: "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400",
   bogo: "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400",
   bundle: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400",
@@ -62,61 +64,113 @@ const offerTypeColors: Record<OfferType, string> = {
   clearance: "bg-rose-100 text-rose-800 dark:bg-rose-900/30 dark:text-rose-400",
   combo: "bg-violet-100 text-violet-800 dark:bg-violet-900/30 dark:text-violet-400",
   flash_sale: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
+  banner: "bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-400",
+  seasonal: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400",
 };
+
+// ─── Helper Functions ─────────────────────────────────────────────────────────
+
+function formatDate(dateStr: string | null): string {
+  if (!dateStr) return "No expiry";
+  return new Date(dateStr).toLocaleDateString("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function OfferDetailPage() {
   const params = useParams();
   const router = useRouter();
-  const [offers, setOffers] = useState<OfferWithProducts[]>(MOCK_OFFERS);
+  const offerId = params.offerId as string;
   const [showDelete, setShowDelete] = useState(false);
 
-  const offer = offers.find((o) => o.id === params.offerId) ?? MOCK_OFFERS[0];
-  const ds = getDateStatus(offer);
+  // Query hooks
+  const { data: offer, isLoading: offerLoading } = useOffer(offerId);
+  const { data: stats, isLoading: statsLoading } = useOfferStats(offerId);
+  const { data: offerProducts, isLoading: productsLoading } = useOfferProducts(offerId);
 
-  const toggleActive = () => {
-    setOffers((prev) =>
-      prev.map((o) =>
-        o.id === offer.id ? { ...o, is_active: !o.is_active } : o
-      )
-    );
+  // Mutation hooks
+  const toggleStatus = useToggleOfferStatus();
+  const deleteOffer = useDeleteOffer();
+  const removeProduct = useRemoveProductFromOffer();
+
+  const handleToggleStatus = async () => {
+    if (!offer) return;
+    try {
+      await toggleStatus.mutateAsync(offerId);
+    } catch (error) {
+      console.error("Failed to toggle status:", error);
+    }
   };
 
-  const removeProduct = (pid: string) => {
-    setOffers((prev) =>
-      prev.map((o) =>
-        o.id === offer.id
-          ? { ...o, products: o.products.filter((p) => p.id !== pid) }
-          : o
-      )
-    );
+  const handleRemoveProduct = async (productId: string) => {
+    try {
+      await removeProduct.mutateAsync({ offerId, productId });
+    } catch (error: any) {
+      console.error("Failed to remove product:", error);
+      alert(error.message || "Failed to remove product");
+    }
   };
 
-  const handleDelete = () => {
-    setOffers((prev) => prev.filter((o) => o.id !== offer.id));
-    router.push("/admin/offers");
-  };
-
-  const resolveApplicableName = () => {
-    if (offer.applicable_to === "all") return "All Items";
-    if (offer.applicable_to === "category")
-      return MOCK_CATEGORIES.find((c) => c.id === offer.applicable_id)?.name ?? "—";
-    if (offer.applicable_to === "vendor")
-      return MOCK_VENDORS.find((v) => v.id === offer.applicable_id)?.name ?? "—";
-    return "Selected Products";
+  const handleDelete = async () => {
+    try {
+      await deleteOffer.mutateAsync(offerId);
+      router.push("/admin/offers");
+    } catch (error) {
+      console.error("Failed to delete offer:", error);
+    }
   };
 
   const formatDiscountValue = () => {
-    if (!offer.discount_value) return offer.discount;
-    
+    if (!offer?.discount_value) return offer?.discount || "—";
+
     if (offer.discount_type === "percentage") {
       return `${offer.discount_value}%`;
-    } else if (offer.discount_type === "flat") {
+    } else if (offer.discount_type === "fixed") {
       return `₹${offer.discount_value}`;
     }
     return offer.discount;
   };
+
+  // Determine if products can be removed individually
+  const canRemoveProducts = offer?.applicable_to === 'product';
+
+  if (offerLoading || statsLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-primary" />
+          <p className="text-muted-foreground">Loading offer details...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!offer) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <h2 className="text-2xl font-bold mb-2">Offer Not Found</h2>
+          <p className="text-muted-foreground mb-4">
+            The offer you're looking for doesn't exist.
+          </p>
+          <Button asChild>
+            <Link href="/admin/offers">
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Back to Offers
+            </Link>
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  const status = stats?.status || "inactive";
 
   return (
     <div className="min-h-screen bg-background">
@@ -136,8 +190,8 @@ export default function OfferDetailPage() {
                 <p className="text-sm text-muted-foreground mt-1">{offer.description}</p>
               )}
               <div className="flex items-center gap-2 mt-2">
-                <Badge className={dateStatusColors[ds]}>{ds}</Badge>
-                <Badge className={offerTypeColors[offer.offer_type]}>
+                <Badge className={dateStatusColors[status]}>{status}</Badge>
+                <Badge className={offerTypeColors[offer.offer_type] || offerTypeColors.discount}>
                   {offer.offer_type.replace("_", " ")}
                 </Badge>
                 {offer.tag && (
@@ -147,11 +201,17 @@ export default function OfferDetailPage() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" onClick={toggleActive}>
-              {offer.is_active ? (
+            <Button
+              variant="outline"
+              onClick={handleToggleStatus}
+              disabled={toggleStatus.isPending}
+            >
+              {toggleStatus.isPending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : offer.is_active ? (
                 <>
                   <Ban className="mr-2 h-4 w-4" />
-                  Suspend
+                  Deactivate
                 </>
               ) : (
                 <>
@@ -161,7 +221,7 @@ export default function OfferDetailPage() {
               )}
             </Button>
             <Button asChild>
-              <Link href={`/admin/offers/add?edit=${offer.id}`}>
+              <Link href={`/admin/offers/upsert?edit=${offer.id}`}>
                 <Pencil className="mr-2 h-4 w-4" />
                 Edit Offer
               </Link>
@@ -169,101 +229,132 @@ export default function OfferDetailPage() {
           </div>
         </div>
 
+        {/* Banner Image */}
+        {offer.banner_image && (
+          <Card>
+            <CardContent className="p-0">
+              <img
+                src={offer.banner_image}
+                alt={offer.title}
+                className="w-full h-64 object-cover rounded-lg"
+              />
+            </CardContent>
+          </Card>
+        )}
+
         {/* Info cards grid */}
         <div className="grid gap-4 md:grid-cols-3">
           {/* Card 1: Offer details */}
           <Card>
-            <CardHeader className="pb-3">
+            <CardHeader className="">
               <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
                 Offer Details
               </CardTitle>
             </CardHeader>
             <Separator />
-            <CardContent className="pt-4 space-y-3">
+            <CardContent className=" space-y-3">
               <div>
                 <p className="text-xs text-muted-foreground">Offer Type</p>
                 <p className="font-medium capitalize mt-0.5">
                   {offer.offer_type.replace("_", " ")}
                 </p>
               </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Discount Type</p>
-                <p className="font-medium capitalize mt-0.5">
-                  {offer.discount_type ?? "—"}
-                </p>
-              </div>
+              {offer.discount_type && (
+                <div>
+                  <p className="text-xs text-muted-foreground">Discount Type</p>
+                  <p className="font-medium capitalize mt-0.5">
+                    {offer.discount_type}
+                  </p>
+                </div>
+              )}
               <div>
                 <p className="text-xs text-muted-foreground">Discount</p>
                 <p className="font-bold text-lg mt-0.5">{offer.discount}</p>
               </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Discount Value</p>
-                <p className="font-bold font-mono text-lg mt-0.5">
-                  {formatDiscountValue()}
-                </p>
-              </div>
-              {offer.display_order && (
+              {offer.discount_value && (
                 <div>
-                  <p className="text-xs text-muted-foreground">Display Order</p>
-                  <p className="font-medium mt-0.5">#{offer.display_order}</p>
+                  <p className="text-xs text-muted-foreground">Discount Value</p>
+                  <p className="font-bold font-mono text-lg mt-0.5">
+                    {formatDiscountValue()}
+                  </p>
                 </div>
               )}
+
+              <div>
+                <p className="text-xs text-muted-foreground">DisplayOrder</p>
+                <p className="font-medium mt-0.5">#{offer.display_order}</p>
+              </div>
+
             </CardContent>
           </Card>
 
           {/* Card 2: Scope */}
           <Card>
-            <CardHeader className="pb-3">
+            <CardHeader className="">
               <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
-                Scope
+                Scope & Stats
               </CardTitle>
             </CardHeader>
             <Separator />
-            <CardContent className="pt-4 space-y-3">
+            <CardContent className=" space-y-3">
               <div>
                 <p className="text-xs text-muted-foreground">Applicable To</p>
                 <p className="font-medium capitalize mt-0.5">
-                  {offer.applicable_to}
+                  {offer.applicable_to || "All"}
                 </p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Target</p>
-                <p className="font-medium mt-0.5">{resolveApplicableName()}</p>
               </div>
               {offer.applicable_id && (
                 <div>
-                  <p className="text-xs text-muted-foreground">Reference ID</p>
+                  <p className="text-xs text-muted-foreground">Scope ID</p>
                   <p className="font-mono text-xs mt-0.5 text-muted-foreground break-all">
                     {offer.applicable_id}
                   </p>
                 </div>
               )}
-              {offer.item_count && offer.item_count > 0 && (
+              {stats && (
+                <>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Products</p>
+                    <p className="font-medium mt-0.5">{stats.products_count}</p>
+                  </div>
+                  {stats.days_remaining !== null && (
+                    <div>
+                      <p className="text-xs text-muted-foreground">Days Remaining</p>
+                      <p className="font-medium mt-0.5">
+                        {stats.days_remaining > 0
+                          ? `${stats.days_remaining} days`
+                          : "Expired"}
+                      </p>
+                    </div>
+                  )}
+                </>
+              )}
+              {/* {offer.item_count && offer.item_count > 0 && (
                 <div>
                   <p className="text-xs text-muted-foreground">Item Count</p>
                   <p className="font-medium mt-0.5">{offer.item_count}</p>
                 </div>
-              )}
-              {offer.min_purchase && (
-                <div>
-                  <p className="text-xs text-muted-foreground">Min. Purchase</p>
-                  <p className="font-medium font-mono mt-0.5">
-                    {offer.min_purchase > 0 ? `₹${offer.min_purchase}` : "No minimum"}
-                  </p>
-                </div>
-              )}
+              )} */}
+
+              <div>
+                <p className="text-xs text-muted-foreground">Min. Purchase</p>
+                <p className="font-medium font-mono mt-0.5">
+                  ₹{offer.min_purchase_amount}
+                </p>
+              </div>
+
             </CardContent>
           </Card>
 
           {/* Card 3: Schedule */}
           <Card>
-            <CardHeader className="pb-3">
+            <CardHeader className="">
               <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
                 Schedule
               </CardTitle>
             </CardHeader>
             <Separator />
-            <CardContent className="pt-4 space-y-3">
+            <CardContent className=" space-y-3">
               <div>
                 <p className="text-xs text-muted-foreground">Start Date</p>
                 <p className="font-medium mt-0.5">{formatDate(offer.start_date)}</p>
@@ -271,7 +362,7 @@ export default function OfferDetailPage() {
               <div>
                 <p className="text-xs text-muted-foreground">End Date</p>
                 <p className="font-medium mt-0.5">
-                  {offer.end_date ? formatDate(offer.end_date) : "No expiry"}
+                  {formatDate(offer.end_date)}
                 </p>
               </div>
               {offer.created_at && (
@@ -285,82 +376,99 @@ export default function OfferDetailPage() {
         </div>
 
         {/* Products section */}
-        {offer.products && offer.products.length > 0 && (
+        {offerProducts && offerProducts.length > 0 && (
           <Card>
             <CardHeader>
               <div className="flex items-center justify-between">
-                <CardTitle className="text-base">Products in this Offer</CardTitle>
+                <div>
+                  <CardTitle className="text-base">Products in this Offer</CardTitle>
+                  {!canRemoveProducts && (
+                    <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
+                      <Info className="h-3 w-3" />
+                      Products are determined by {offer.applicable_to}
+                      {offer.applicable_to === 'all' ? ' items' : ''}
+                    </p>
+                  )}
+                </div>
                 <span className="text-sm text-muted-foreground">
-                  {offer.products.length} products
+                  {offerProducts.length} products
                 </span>
               </div>
             </CardHeader>
             <Separator />
             <CardContent className="p-0">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Product</TableHead>
-                    <TableHead>SKU</TableHead>
-                    <TableHead className="text-right">Price</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {offer.products.map((p: OfferProduct) => (
-                    <TableRow key={p.id}>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xl">{p.image}</span>
-                          <span className="font-medium">{p.name}</span>
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-muted-foreground font-mono text-sm">
-                        {p.sku ?? "—"}
-                      </TableCell>
-                      <TableCell className="text-right font-mono">
-                        ₹{p.price}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => removeProduct(p.id)}
-                          className="text-destructive hover:text-destructive"
-                        >
-                          Remove
-                        </Button>
-                      </TableCell>
+              {productsLoading ? (
+                <div className="py-12 text-center">
+                  <Loader2 className="h-6 w-6 animate-spin mx-auto text-primary" />
+                </div>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Product</TableHead>
+                      <TableHead>SKU</TableHead>
+                      <TableHead>Category</TableHead>
+                      <TableHead>Vendor</TableHead>
+                      <TableHead className="text-right">Price</TableHead>
+                      <TableHead className="text-right">Stock</TableHead>
+                      {canRemoveProducts && <TableHead className="text-right">Actions</TableHead>}
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Activity */}
-        {(offer.created_at || offer.updated_at) && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Activity</CardTitle>
-            </CardHeader>
-            <Separator />
-            <CardContent className="pt-4">
-              <div className="grid gap-3 md:grid-cols-2">
-                {offer.created_at && (
-                  <div>
-                    <p className="text-xs text-muted-foreground">Created At</p>
-                    <p className="font-medium mt-0.5">{formatDate(offer.created_at)}</p>
-                  </div>
-                )}
-                {offer.updated_at && (
-                  <div>
-                    <p className="text-xs text-muted-foreground">Last Updated</p>
-                    <p className="font-medium mt-0.5">{formatDate(offer.updated_at)}</p>
-                  </div>
-                )}
-              </div>
+                  </TableHeader>
+                  <TableBody>
+                    {offerProducts.map(({ id, product }: any) => (
+                      <TableRow key={id}>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            {product.image && (
+                              <img
+                                src={product.image}
+                                alt={product.name}
+                                className="h-10 w-10 rounded object-cover"
+                              />
+                            )}
+                            <span className="font-medium">{product.name}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-muted-foreground font-mono text-sm">
+                          {product.sku ?? "—"}
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">
+                          {product.category?.name ?? "—"}
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">
+                          {product.vendor?.store_name ?? "—"}
+                        </TableCell>
+                        <TableCell className="text-right font-mono">
+                          ₹{product.price}
+                          {product.discount_price && (
+                            <span className="text-xs text-muted-foreground line-through ml-1">
+                              ₹{product.discount_price}
+                            </span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Badge variant={product.stock_quantity > 0 ? "default" : "destructive"}>
+                            {product.stock_quantity ?? 0}
+                          </Badge>
+                        </TableCell>
+                        {canRemoveProducts && (
+                          <TableCell className="text-right">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleRemoveProduct(product.id)}
+                              disabled={removeProduct.isPending}
+                              className="text-destructive hover:text-destructive"
+                            >
+                              {removeProduct.isPending ? "..." : "Remove"}
+                            </Button>
+                          </TableCell>
+                        )}
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
             </CardContent>
           </Card>
         )}
@@ -406,9 +514,10 @@ export default function OfferDetailPage() {
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDelete}
+              disabled={deleteOffer.isPending}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              Delete Offer
+              {deleteOffer.isPending ? "Deleting..." : "Delete Offer"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

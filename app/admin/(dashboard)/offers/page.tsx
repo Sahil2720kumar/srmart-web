@@ -41,95 +41,142 @@ import {
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  MOCK_OFFERS,
-  OfferWithProducts,
-  getDateStatus,
-  formatDate,
-  DateStatus,
-  OfferType,
-} from "@/lib/mock-data";
+  useOffers,
+  useDeleteOffer,
+  useToggleOfferStatus,
+  useDuplicateOffer,
+} from "@/hooks/products/useOffers";
+import { Offer } from "@/types/supabase";
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+type DateStatus = "running" | "upcoming" | "expired" | "inactive";
+type OfferType = "discount" | "bogo" | "bundle" | "free_delivery" | "clearance" | "combo" | "flash_sale";
 
 // ─── Badge styles ─────────────────────────────────────────────────────────────
 
 const dateStatusColors: Record<DateStatus, string> = {
-  running:
-    "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
-  upcoming:
-    "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400",
-  expired:
-    "bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400",
-  inactive:
-    "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
+  running: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
+  upcoming: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400",
+  expired: "bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400",
+  inactive: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
 };
 
-const offerTypeColors: Record<OfferType, string> = {
-  discount:
-    "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400",
-  bogo:
-    "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400",
-  bundle:
-    "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400",
-  free_delivery:
-    "bg-cyan-100 text-cyan-800 dark:bg-cyan-900/30 dark:text-cyan-400",
-  clearance:
-    "bg-rose-100 text-rose-800 dark:bg-rose-900/30 dark:text-rose-400",
-  combo:
-    "bg-violet-100 text-violet-800 dark:bg-violet-900/30 dark:text-violet-400",
-  flash_sale:
-    "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
+const offerTypeColors: Record<string, string> = {
+  discount: "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400",
+  bogo: "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400",
+  bundle: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400",
+  free_delivery: "bg-cyan-100 text-cyan-800 dark:bg-cyan-900/30 dark:text-cyan-400",
+  clearance: "bg-rose-100 text-rose-800 dark:bg-rose-900/30 dark:text-rose-400",
+  combo: "bg-violet-100 text-violet-800 dark:bg-violet-900/30 dark:text-violet-400",
+  flash_sale: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
+  banner: "bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-400",
+  seasonal: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400",
+  category: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400",
+  vendor: "bg-teal-100 text-teal-800 dark:bg-teal-900/30 dark:text-teal-400",
 };
+
+// ─── Helper Functions ─────────────────────────────────────────────────────────
+
+function getDateStatus(offer: Offer): DateStatus {
+  if (!offer.is_active) return "inactive";
+  
+  const now = new Date();
+  const startDate = new Date(offer.start_date);
+  const endDate = offer.end_date ? new Date(offer.end_date) : null;
+
+  if (now < startDate) return "upcoming";
+  if (endDate && now > endDate) return "expired";
+  return "running";
+}
+
+function formatDate(dateStr: string | null): string {
+  if (!dateStr) return "No expiry";
+  return new Date(dateStr).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function OffersPage() {
   const router = useRouter();
-  const [offers, setOffers] = useState<OfferWithProducts[]>(MOCK_OFFERS);
   const [searchQuery, setSearchQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
   const [applicableFilter, setApplicableFilter] = useState("all");
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
   const [dateFilter, setDateFilter] = useState("all");
-  const [deleteTarget, setDeleteTarget] = useState<OfferWithProducts | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Offer | null>(null);
 
-  const toggleActive = (id: string) => {
-    setOffers((prev) =>
-      prev.map((o) => (o.id === id ? { ...o, is_active: !o.is_active } : o))
-    );
+  // Query hooks
+  const { data: offers = [], isLoading } = useOffers({
+    is_active: statusFilter === "all" ? undefined : statusFilter === "active",
+    offer_type: typeFilter === "all" ? undefined : typeFilter,
+    applicable_to: applicableFilter === "all" ? undefined : applicableFilter,
+  });
+
+  // Mutation hooks
+  const deleteOffer = useDeleteOffer();
+  const toggleStatus = useToggleOfferStatus();
+  const duplicateOffer = useDuplicateOffer();
+
+  const handleToggleActive = async (offer: Offer) => {
+    try {
+      await toggleStatus.mutateAsync(offer.id);
+    } catch (error) {
+      console.error("Failed to toggle status:", error);
+    }
   };
 
-  const duplicate = (offer: OfferWithProducts) => {
-    const copy: OfferWithProducts = {
-      ...offer,
-      id: "o-" + Date.now(),
-      title: offer.title + " (Copy)",
-      display_order: offers.length + 1,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    };
-    setOffers((prev) => [copy, ...prev]);
+  const handleDuplicate = async (offer: Offer) => {
+    try {
+      const newStartDate = new Date();
+      newStartDate.setDate(newStartDate.getDate() + 7); // Start in 7 days
+
+      await duplicateOffer.mutateAsync({
+        offerId: offer.id,
+        newStartDate: newStartDate.toISOString(),
+        newTitle: `${offer.title} (Copy)`,
+      });
+    } catch (error) {
+      console.error("Failed to duplicate offer:", error);
+    }
   };
 
-  const handleDelete = (id: string) => {
-    setOffers((prev) => prev.filter((o) => o.id !== id));
-    setDeleteTarget(null);
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    
+    try {
+      await deleteOffer.mutateAsync(deleteTarget.id);
+      setDeleteTarget(null);
+    } catch (error) {
+      console.error("Failed to delete offer:", error);
+    }
   };
 
+  // Client-side filtering for search and date status
   const filtered = offers.filter((o) => {
     const q = searchQuery.toLowerCase();
     const matchSearch =
       o.title.toLowerCase().includes(q) ||
       o.discount.toLowerCase().includes(q);
-    const matchType = typeFilter === "all" || o.offer_type === typeFilter;
-    const matchApplicable =
-      applicableFilter === "all" || o.applicable_to === applicableFilter;
-    const matchStatus =
-      statusFilter === "all" ||
-      (statusFilter === "active" && o.is_active) ||
-      (statusFilter === "inactive" && !o.is_active);
     const matchDate =
       dateFilter === "all" || getDateStatus(o) === dateFilter;
-    return matchSearch && matchType && matchApplicable && matchStatus && matchDate;
+    return matchSearch && matchDate;
   });
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full mx-auto mb-4" />
+          <p className="text-muted-foreground">Loading offers...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -181,6 +228,7 @@ export default function OffersPage() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All</SelectItem>
+                    <SelectItem value="banner">Banner</SelectItem>
                     <SelectItem value="discount">Discount</SelectItem>
                     <SelectItem value="bogo">BOGO</SelectItem>
                     <SelectItem value="bundle">Bundle</SelectItem>
@@ -188,6 +236,7 @@ export default function OffersPage() {
                     <SelectItem value="clearance">Clearance</SelectItem>
                     <SelectItem value="combo">Combo</SelectItem>
                     <SelectItem value="flash_sale">Flash Sale</SelectItem>
+                    <SelectItem value="seasonal">Seasonal</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -203,8 +252,8 @@ export default function OffersPage() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All</SelectItem>
-                    <SelectItem value="all">All Items</SelectItem>
                     <SelectItem value="category">Category</SelectItem>
+                    <SelectItem value="subcategory">Subcategory</SelectItem>
                     <SelectItem value="vendor">Vendor</SelectItem>
                     <SelectItem value="product">Product</SelectItem>
                   </SelectContent>
@@ -216,7 +265,7 @@ export default function OffersPage() {
                 <label className="text-sm font-medium text-foreground">
                   Active
                 </label>
-                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as any)}>
                   <SelectTrigger>
                     <SelectValue placeholder="All" />
                   </SelectTrigger>
@@ -264,7 +313,6 @@ export default function OffersPage() {
                     <TableHead>Type</TableHead>
                     <TableHead>Discount</TableHead>
                     <TableHead>Applicable To</TableHead>
-                    <TableHead>Items</TableHead>
                     <TableHead>Min. Purchase</TableHead>
                     <TableHead>Start Date</TableHead>
                     <TableHead>End Date</TableHead>
@@ -276,7 +324,7 @@ export default function OffersPage() {
                   {filtered.length === 0 ? (
                     <TableRow>
                       <TableCell
-                        colSpan={10}
+                        colSpan={9}
                         className="py-12 text-center text-muted-foreground"
                       >
                         No offers found. Try adjusting your filters.
@@ -292,7 +340,7 @@ export default function OffersPage() {
                             <div className="flex items-center gap-2.5">
                               <div
                                 className="h-8 w-8 rounded-md flex-shrink-0 flex items-center justify-center text-white text-sm font-bold"
-                                style={{ background: offer.banner_color }}
+                                style={{ background: offer.bg_color || "#6366f1" }}
                               >
                                 {offer.title[0]}
                               </div>
@@ -309,7 +357,7 @@ export default function OffersPage() {
 
                           {/* Type */}
                           <TableCell>
-                            <Badge className={offerTypeColors[offer.offer_type]}>
+                            <Badge className={offerTypeColors[offer.offer_type] || offerTypeColors.discount}>
                               {offer.offer_type.replace("_", " ")}
                             </Badge>
                           </TableCell>
@@ -321,17 +369,12 @@ export default function OffersPage() {
 
                           {/* Applicable */}
                           <TableCell className="capitalize text-muted-foreground">
-                            {offer.applicable_to}
-                          </TableCell>
-
-                          {/* Items */}
-                          <TableCell className="text-muted-foreground">
-                            {offer.item_count || "—"}
+                            {offer.applicable_to || "all"}
                           </TableCell>
 
                           {/* Min purchase */}
                           <TableCell className="text-muted-foreground font-mono">
-                            {offer.min_purchase ? `₹${offer.min_purchase}` : "—"}
+                            {offer.min_purchase_amount ? `₹${offer.min_purchase_amount}` : "—"}
                           </TableCell>
 
                           {/* Dates */}
@@ -370,11 +413,11 @@ export default function OffersPage() {
                                     Edit
                                   </Link>
                                 </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => toggleActive(offer.id)}>
+                                <DropdownMenuItem onClick={() => handleToggleActive(offer)}>
                                   <Zap className="mr-2 h-4 w-4" />
                                   {offer.is_active ? "Deactivate" : "Activate"}
                                 </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => duplicate(offer)}>
+                                <DropdownMenuItem onClick={() => handleDuplicate(offer)}>
                                   <Copy className="mr-2 h-4 w-4" />
                                   Duplicate
                                 </DropdownMenuItem>
@@ -398,19 +441,6 @@ export default function OffersPage() {
             </div>
           </CardContent>
         </Card>
-
-        {/* Pagination placeholder */}
-        <div className="flex items-center justify-between">
-          <p className="text-sm text-muted-foreground">Page 1 of 1</p>
-          <div className="flex gap-2">
-            <Button variant="outline" disabled>
-              Previous
-            </Button>
-            <Button variant="outline" disabled>
-              Next
-            </Button>
-          </div>
-        </div>
       </div>
 
       {/* Delete dialog */}
@@ -429,7 +459,7 @@ export default function OffersPage() {
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              onClick={() => deleteTarget && handleDelete(deleteTarget.id)}
+              onClick={handleDelete}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               Delete

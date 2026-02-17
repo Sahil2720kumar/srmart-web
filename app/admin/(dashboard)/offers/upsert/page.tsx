@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useMemo } from "react";
-import { ArrowLeft, Check, Loader2 } from "lucide-react";
+import { useState, useMemo, useEffect } from "react";
+import { ArrowLeft, Check, Loader2, Upload, X, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -26,130 +26,52 @@ import {
 } from "@/components/ui/table";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import {
+  useOffer,
+  useOfferProducts,
+  useCreateOffer,
+  useUpdateOffer,
+  useUpdateOfferProducts,
+} from "@/hooks/products/useOffers";
+import { useCategories, useSubCategories } from "@/hooks/products/useCategories";
+import { useProducts } from "@/hooks/products/useProducts";
+import { useVendors } from "@/hooks/vendors/useVendors";
+import { DiscountType, OfferApplicableTo, OfferInsert, OfferType, OfferUpdate } from "@/types/supabase";
+import { toast } from "sonner";
 
-// ─── Types matching public.offers schema ─────────────────────────────────────
+// ─── Types ────────────────────────────────────────────────────────────────────
 
-type OfferType =
-  | "discount"
-  | "bogo"
-  | "bundle"
-  | "free_delivery"
-  | "clearance"
-  | "combo"
-  | "flash_sale";
-
-type DiscountType = "percentage" | "flat" | "bogo";
-
-type OfferApplicableTo = "all" | "category" | "vendor" | "product";
-
-/**
- * Matches exactly the columns in public.offers:
- *   title, description, discount, offer_type, discount_type,
- *   discount_value, applicable_to, applicable_id, start_date, end_date
- *
- * `discount` is a derived display string (e.g. "20% OFF", "₹100 OFF").
- * It is computed from discount_type + discount_value before saving.
- */
 interface OfferFormState {
-  // Basic
   title: string;
   description: string;
-
-  // Offer config — maps to offer_type, discount_type, discount_value
   offer_type: OfferType;
   discount_type: DiscountType | "";
   discount_value: number | "";
-
-  // Scope — maps to applicable_to, applicable_id (single UUID or null)
   applicable_to: OfferApplicableTo;
-  applicable_id: string; // "" means null in DB
-
-  // If applicable_to = "product" we also manage a join table.
-  // selected_product_ids holds those IDs locally.
+  applicable_id: string;
   selected_product_ids: string[];
-
-  // Conditions
-  min_purchase: number | "";
-  start_date: string; // datetime-local string
-  end_date: string;   // datetime-local string, "" = no expiry (NULL in DB)
+  min_purchase_amount: number | "";
+  start_date: string;
+  end_date: string;
+  tag: string;
+  bg_color: string;
+  display_order: number | "";
+  is_active: boolean;
 }
 
 type FormErrors = Partial<Record<keyof OfferFormState, string>>;
 
-// ─── Mock reference data ─────────────────────────────────────────────────────
+// ─── Error Display Component ──────────────────────────────────────────────────
 
-const CATEGORIES = [
-  { id: "345cd671-1dd8-4ef1-8a95-063bd30ae829", name: "Vegetables" },
-  { id: "cat-fruits", name: "Fruits" },
-  { id: "cat-dairy", name: "Dairy & Eggs" },
-  { id: "cat-bakery", name: "Bakery" },
-  { id: "cat-snacks", name: "Snacks & Beverages" },
-];
-
-const VENDORS = [
-  { id: "13351d0c-f382-41bd-8490-3c3803b4eca6", name: "FreshMart Supplies" },
-  { id: "ven-green", name: "GreenLeaf Organics" },
-  { id: "ven-daily", name: "Daily Harvest Co." },
-  { id: "ven-farm", name: "Farm Direct Ltd." },
-];
-
-const PRODUCTS = [
-  { id: "p1", name: "Fresh Spinach 500g", price: 45, image: "🥬", sku: "VEG-001" },
-  { id: "p2", name: "Organic Tomatoes 1kg", price: 80, image: "🍅", sku: "VEG-002" },
-  { id: "p3", name: "Baby Carrots 250g", price: 35, image: "🥕", sku: "VEG-003" },
-  { id: "p4", name: "Bell Peppers Mix", price: 120, image: "🫑", sku: "VEG-004" },
-  { id: "p5", name: "Cucumber Pack", price: 30, image: "🥒", sku: "VEG-005" },
-  { id: "p6", name: "Broccoli Head", price: 65, image: "🥦", sku: "VEG-006" },
-  { id: "p7", name: "Sweet Corn x4", price: 55, image: "🌽", sku: "VEG-007" },
-  { id: "p8", name: "Avocado Pair", price: 140, image: "🥑", sku: "FRT-001" },
-];
-
-// ─── Seed data matching the 3 SQL inserts ────────────────────────────────────
-
-const MOCK_OFFERS: Array<OfferFormState & { id: string }> = [
-  {
-    id: "o1",
-    title: "Vegetable Fest",
-    description: "Fresh vegetables at discounted prices",
-    offer_type: "discount",
-    discount_type: "percentage",
-    discount_value: 20,
-    applicable_to: "category",
-    applicable_id: "345cd671-1dd8-4ef1-8a95-063bd30ae829",
-    selected_product_ids: [],
-    min_purchase: "",
-    start_date: toLocalDT(new Date().toISOString()),
-    end_date: toLocalDT(new Date(Date.now() + 7 * 86400000).toISOString()),
-  },
-  {
-    id: "o2",
-    title: "Top Vendor Deal",
-    description: "Special discount from selected vendor",
-    offer_type: "discount",
-    discount_type: "flat",
-    discount_value: 100,
-    applicable_to: "vendor",
-    applicable_id: "13351d0c-f382-41bd-8490-3c3803b4eca6",
-    selected_product_ids: [],
-    min_purchase: "",
-    start_date: toLocalDT(new Date().toISOString()),
-    end_date: toLocalDT(new Date(Date.now() + 5 * 86400000).toISOString()),
-  },
-  {
-    id: "o3",
-    title: "Combo Deal",
-    description: "Special combo offer on selected products",
-    offer_type: "combo",
-    discount_type: "percentage",
-    discount_value: 15,
-    applicable_to: "product",
-    applicable_id: "",           // NULL in DB — products are in the join table
-    selected_product_ids: ["p4", "p5", "p6"],
-    min_purchase: "",
-    start_date: toLocalDT(new Date().toISOString()),
-    end_date: toLocalDT(new Date(Date.now() + 3 * 86400000).toISOString()),
-  },
-];
+const ErrorMessage = ({ message }: { message?: string }) => {
+  if (!message) return null;
+  return (
+    <div className="flex items-center gap-1.5 text-xs text-destructive mt-1">
+      <AlertCircle className="h-3 w-3" />
+      <span>{message}</span>
+    </div>
+  );
+};
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -161,117 +83,398 @@ function toLocalDT(iso?: string | null): string {
     .slice(0, 16);
 }
 
-/**
- * Builds the `discount` display string stored in public.offers.discount.
- * Mirrors the DB values from the SQL inserts ("20% OFF", "₹100 OFF", "15% OFF").
- */
 function buildDiscount(type: DiscountType | "", value: number | ""): string {
   if (!type || value === "") return "";
   if (type === "percentage") return `${value}% OFF`;
   if (type === "flat") return `₹${value} OFF`;
-  if (type === "bogo") return "Buy 1 Get 1";
+  if (type === "bogo") return "Buy X Get Y";
   return "";
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
-export default function AddOfferPage() {
+export default function OfferUpsertPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const editId = searchParams.get("edit");
-  const offerToEdit = editId ? MOCK_OFFERS.find((o) => o.id === editId) : undefined;
-  const isEdit = !!offerToEdit;
+  const isEdit = !!editId;
+
+  // Query hooks
+  const { data: existingOffer, isLoading: loadingOffer } = useOffer(editId || "");
+  const { data: existingProducts } = useOfferProducts(editId || "");
+  const { data: categories = [] } = useCategories({ is_active: true });
+  const { data: vendors = [] } = useVendors({ is_verified: true });
+  const { data: products = [] } = useProducts({ is_available: true });
+
+  // Mutation hooks
+  const createOffer = useCreateOffer();
+  const updateOffer = useUpdateOffer();
+  const updateProducts = useUpdateOfferProducts();
 
   const defaultStart = toLocalDT(new Date().toISOString());
 
   const [form, setForm] = useState<OfferFormState>({
-    title:                offerToEdit?.title ?? "",
-    description:          offerToEdit?.description ?? "",
-    offer_type:           offerToEdit?.offer_type ?? "discount",
-    discount_type:        offerToEdit?.discount_type ?? "percentage",
-    discount_value:       offerToEdit?.discount_value ?? "",
-    applicable_to:        offerToEdit?.applicable_to ?? "all",
-    applicable_id:        offerToEdit?.applicable_id ?? "",
-    selected_product_ids: offerToEdit?.selected_product_ids ?? [],
-    min_purchase:         offerToEdit?.min_purchase ?? "",
-    start_date:           offerToEdit?.start_date ?? defaultStart,
-    end_date:             offerToEdit?.end_date ?? "",
+    title: "",
+    description: "",
+    offer_type: "discount",
+    discount_type: "percentage",
+    discount_value: "",
+    applicable_to: "all",
+    applicable_id: "",
+    selected_product_ids: [],
+    min_purchase_amount: "",
+    start_date: defaultStart,
+    end_date: "",
+    tag: "",
+    bg_color: "#6366f1",
+    display_order: "",
+    is_active: true,
   });
 
+  const [bannerFile, setBannerFile] = useState<File | undefined>();
+  const [bannerPreview, setBannerPreview] = useState<string | null>(null);
   const [errors, setErrors] = useState<FormErrors>({});
+  const [touched, setTouched] = useState<Partial<Record<keyof OfferFormState, boolean>>>({});
   const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
+
+  // Get subcategories for selected category
+  const { data: subcategories = [] } = useSubCategories({
+    category_id: form.applicable_to === "subcategory" && form.applicable_id 
+      ? categories.find(c => c.id === form.applicable_id)?.id 
+      : undefined,
+  });
+
+  // Load existing offer data
+  useEffect(() => {
+    if (existingOffer && isEdit) {
+      setForm({
+        title: existingOffer.title,
+        description: existingOffer.description || "",
+        offer_type: existingOffer.offer_type as OfferType,
+        discount_type: (existingOffer.discount_type as DiscountType) || "",
+        discount_value: existingOffer.discount_value || "",
+        applicable_to: (existingOffer.applicable_to as OfferApplicableTo) || "all",
+        applicable_id: existingOffer.applicable_id || "",
+        selected_product_ids: existingProducts?.map((p: any) => p.product.id) || [],
+        min_purchase_amount: existingOffer.min_purchase_amount || "",
+        start_date: toLocalDT(existingOffer.start_date),
+        end_date: toLocalDT(existingOffer.end_date),
+        tag: existingOffer.tag || "",
+        bg_color: existingOffer.bg_color || "#6366f1",
+        display_order: existingOffer.display_order || "",
+        is_active: existingOffer.is_active ?? true,
+      });
+
+      if (existingOffer.banner_image) {
+        setBannerPreview(existingOffer.banner_image);
+      }
+    }
+  }, [existingOffer, existingProducts, isEdit]);
 
   const set = <K extends keyof OfferFormState>(key: K, value: OfferFormState[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
-    setErrors((prev) => ({ ...prev, [key]: undefined }));
+    // Clear error for this field when user starts typing
+    if (errors[key]) {
+      setErrors((prev) => ({ ...prev, [key]: undefined }));
+    }
   };
 
-  // Discount fields are only shown for offer types that support them
-  const showDiscountFields = ["discount", "flash_sale", "combo", "bundle", "clearance", "bogo"].includes(form.offer_type);
-  const showDiscountValue  = showDiscountFields && form.discount_type && form.discount_type !== "bogo";
+  const handleBlur = <K extends keyof OfferFormState>(key: K) => {
+    setTouched((prev) => ({ ...prev, [key]: true }));
+    validateField(key);
+  };
+
+  const validateField = <K extends keyof OfferFormState>(key: K): boolean => {
+    const newErrors: FormErrors = { ...errors };
+    
+    switch (key) {
+      case "title":
+        if (!form.title.trim()) {
+          newErrors.title = "Title is required";
+        } else {
+          delete newErrors.title;
+        }
+        break;
+      
+      case "start_date":
+        if (!form.start_date) {
+          newErrors.start_date = "Start date is required";
+        } else {
+          delete newErrors.start_date;
+        }
+        break;
+      
+      case "end_date":
+        if (form.end_date && form.end_date <= form.start_date) {
+          newErrors.end_date = "End date must be after start date";
+        } else {
+          delete newErrors.end_date;
+        }
+        break;
+      
+      case "discount_value":
+        const showDiscountFields = [
+          "banner",
+          "discount",
+          "flash_sale",
+          "combo",
+          "bundle",
+          "clearance",
+          "bogo",
+          "seasonal",
+        ].includes(form.offer_type);
+        const showDiscountValue = showDiscountFields && form.discount_type && form.discount_type !== "bogo";
+        
+        if (showDiscountValue && form.discount_value === "") {
+          newErrors.discount_value = "Discount value is required";
+        } else if (form.discount_type === "percentage" && typeof form.discount_value === "number") {
+          if (form.discount_value < 0 || form.discount_value > 100) {
+            newErrors.discount_value = "Percentage must be between 0 and 100";
+          } else {
+            delete newErrors.discount_value;
+          }
+        } else if (form.discount_type === "flat" && typeof form.discount_value === "number") {
+          if (form.discount_value < 0) {
+            newErrors.discount_value = "Amount must be positive";
+          } else {
+            delete newErrors.discount_value;
+          }
+        } else {
+          delete newErrors.discount_value;
+        }
+        break;
+      
+      case "applicable_id":
+        if ((form.applicable_to === "category" || 
+             form.applicable_to === "subcategory" || 
+             form.applicable_to === "vendor") && !form.applicable_id) {
+          newErrors.applicable_id = `Please select a ${form.applicable_to}`;
+        } else {
+          delete newErrors.applicable_id;
+        }
+        break;
+      
+      case "selected_product_ids":
+        if (form.applicable_to === "product" && form.selected_product_ids.length === 0) {
+          newErrors.applicable_id = "Please select at least one product";
+        } else if (form.applicable_to === "product") {
+          delete newErrors.applicable_id;
+        }
+        break;
+      
+      case "min_purchase_amount":
+        if (form.min_purchase_amount !== "" && Number(form.min_purchase_amount) < 0) {
+          newErrors.min_purchase_amount = "Amount must be positive";
+        } else {
+          delete newErrors.min_purchase_amount;
+        }
+        break;
+      
+      case "display_order":
+        if (form.display_order !== "" && Number(form.display_order) < 0) {
+          newErrors.display_order = "Order must be positive";
+        } else {
+          delete newErrors.display_order;
+        }
+        break;
+    }
+    
+    setErrors(newErrors);
+    return !newErrors[key];
+  };
+
+  const handleBannerChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("Image size must be less than 5MB");
+      return;
+    }
+    
+    // Validate file type
+    if (!file.type.startsWith("image/")) {
+      toast.error("Please upload a valid image file");
+      return;
+    }
+    
+    setBannerFile(file);
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setBannerPreview(reader.result as string);
+    };
+    reader.onerror = () => {
+      toast.error("Failed to read image file");
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const removeBanner = () => {
+    setBannerFile(undefined);
+    setBannerPreview(null);
+  };
+
+  const showDiscountFields = [
+    "banner",
+    "discount",
+    "flash_sale",
+    "combo",
+    "bundle",
+    "clearance",
+    "bogo",
+    "seasonal",
+  ].includes(form.offer_type);
+  
+  const showDiscountValue = showDiscountFields && form.discount_type && form.discount_type !== "bogo";
 
   const discountPreview = useMemo(
     () => buildDiscount(form.discount_type, form.discount_value),
     [form.discount_type, form.discount_value]
   );
 
-  // What to show in the applicable_id picker
   const scopeOptions = useMemo(() => {
-    if (form.applicable_to === "category") return CATEGORIES;
-    if (form.applicable_to === "vendor")   return VENDORS;
+    if (form.applicable_to === "category") return categories;
+    if (form.applicable_to === "subcategory") return subcategories;
+    if (form.applicable_to === "vendor") return vendors;
     return [];
-  }, [form.applicable_to]);
+  }, [form.applicable_to, categories, subcategories, vendors]);
 
   const validate = (): boolean => {
     const e: FormErrors = {};
-    if (!form.title.trim())
+    
+    // Title validation
+    if (!form.title.trim()) {
       e.title = "Title is required";
-    if (!form.start_date)
+    }
+    
+    // Date validations
+    if (!form.start_date) {
       e.start_date = "Start date is required";
-    if (form.end_date && form.end_date <= form.start_date)
+    }
+    if (form.end_date && form.end_date <= form.start_date) {
       e.end_date = "End date must be after start date";
-    if (showDiscountValue && form.discount_value === "")
+    }
+    
+    // Discount validation
+    if (showDiscountValue && form.discount_value === "") {
       e.discount_value = "Discount value is required";
-    if ((form.applicable_to === "category" || form.applicable_to === "vendor") && !form.applicable_id)
-      e.applicable_id = "Please select one";
+    } else if (form.discount_type === "percentage" && typeof form.discount_value === "number") {
+      if (form.discount_value < 0 || form.discount_value > 100) {
+        e.discount_value = "Percentage must be between 0 and 100";
+      }
+    } else if (form.discount_type === "flat" && typeof form.discount_value === "number") {
+      if (form.discount_value < 0) {
+        e.discount_value = "Amount must be positive";
+      }
+    }
+    
+    // Applicable to validation
+    if ((form.applicable_to === "category" || 
+         form.applicable_to === "subcategory" || 
+         form.applicable_to === "vendor") && !form.applicable_id) {
+      e.applicable_id = `Please select a ${form.applicable_to}`;
+    }
+    if (form.applicable_to === "product" && form.selected_product_ids.length === 0) {
+      e.applicable_id = "Please select at least one product";
+    }
+    
+    // Numeric validations
+    if (form.min_purchase_amount !== "" && Number(form.min_purchase_amount) < 0) {
+      e.min_purchase_amount = "Amount must be positive";
+    }
+    if (form.display_order !== "" && Number(form.display_order) < 0) {
+      e.display_order = "Order must be positive";
+    }
+    
     setErrors(e);
+    
+    // Mark all fields as touched to show errors
+    const allTouched: Partial<Record<keyof OfferFormState, boolean>> = {};
+    Object.keys(e).forEach((key) => {
+      allTouched[key as keyof OfferFormState] = true;
+    });
+    setTouched((prev) => ({ ...prev, ...allTouched }));
+    
     return Object.keys(e).length === 0;
   };
 
-  /**
-   * Builds the payload that maps 1-to-1 with the public.offers INSERT columns:
-   *   title, description, discount, offer_type, discount_type,
-   *   discount_value, applicable_to, applicable_id, start_date, end_date
-   */
-  const buildPayload = () => ({
-    title:          form.title.trim(),
-    description:    form.description.trim() || null,
-    discount:       discountPreview || null,           // e.g. "20% OFF"
-    offer_type:     form.offer_type,                   // e.g. "discount"
-    discount_type:  form.discount_type || null,        // e.g. "percentage"
-    discount_value: form.discount_value !== "" ? Number(form.discount_value) : null,  // e.g. 20
-    applicable_to:  form.applicable_to,                // e.g. "category"
-    applicable_id:  form.applicable_id || null,        // UUID or null
-    start_date:     form.start_date ? new Date(form.start_date).toISOString() : null,
-    end_date:       form.end_date   ? new Date(form.end_date).toISOString()   : null,
-    // If applicable_to = "product", selected_product_ids go to a join table (offer_products)
-    ...(form.applicable_to === "product" && {
-      _product_ids: form.selected_product_ids,
-    }),
-  });
-
   const handleSubmit = async () => {
-    if (!validate()) return;
+    if (!validate()) {
+      toast.error("Please fix all errors before submitting");
+      return;
+    }
+
     setSaving(true);
-    const payload = buildPayload();
-    console.log("→ INSERT/UPDATE public.offers", payload);
-    // TODO: await supabase.from("offers").upsert(payload)
-    await new Promise((r) => setTimeout(r, 800));
-    setSaving(false);
-    setSaved(true);
-    setTimeout(() => router.push("/admin/offers"), 800);
+
+    try {
+      const offerData: OfferInsert | OfferUpdate = {
+        title: form.title.trim(),
+        description: form.description.trim() || null,
+        discount: discountPreview || form.title,
+        offer_type: form.offer_type,
+        discount_type: form.discount_type || null,
+        discount_value: form.discount_value !== "" ? Number(form.discount_value) : null,
+        applicable_to: form.applicable_to,
+        applicable_id: form.applicable_id || null,
+        start_date: form.start_date ? new Date(form.start_date).toISOString() : new Date().toISOString(),
+        end_date: form.end_date ? new Date(form.end_date).toISOString() : null,
+        min_purchase_amount: form.min_purchase_amount !== "" ? Number(form.min_purchase_amount) : null,
+        tag: form.tag || null,
+        bg_color: form.bg_color || null,
+        display_order: form.display_order !== "" ? Number(form.display_order) : null,
+        is_active: form.is_active,
+      };
+
+      console.log("offerData",offerData);
+      
+      if (isEdit && editId) {
+        // Update existing offer
+        await updateOffer.mutateAsync({
+          offerId: editId,
+          updates: offerData,
+          bannerFile,
+          removeBanner: !bannerPreview && !bannerFile,
+        });
+
+        // Update products if applicable_to is "product"
+        if (form.applicable_to === "product") {
+          await updateProducts.mutateAsync({
+            offerId: editId,
+            productIds: form.selected_product_ids,
+          });
+        }
+        toast.success("Offer updated successfully");
+      } else {
+        // Create new offer
+        await createOffer.mutateAsync({
+          offer: offerData as OfferInsert,
+          bannerFile,
+          productIds: form.applicable_to === "product" ? form.selected_product_ids : undefined,
+        });
+        toast.success("Offer created successfully");
+      }
+
+      router.push("/admin/offers");
+    } catch (error: any) {
+      console.error("Failed to save offer:", error);
+      const errorMessage = error?.message || "Failed to save offer. Please try again.";
+      toast.error(errorMessage);
+    } finally {
+      setSaving(false);
+    }
   };
+
+  if (isEdit && loadingOffer) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-primary" />
+          <p className="text-muted-foreground">Loading offer...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -290,22 +493,62 @@ export default function AddOfferPage() {
             </h1>
             <p className="text-sm text-muted-foreground mt-1">
               {isEdit
-                ? `Editing: ${offerToEdit?.title}`
+                ? `Editing: ${existingOffer?.title}`
                 : "Set up a new promotional campaign"}
             </p>
           </div>
         </div>
 
-        {/* ── Section 1: Basic Info ─────────────────────────────────── */}
+        {/* Banner Upload */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-xl">Banner Image</CardTitle>
+          </CardHeader>
+          <Separator />
+          <CardContent className="pt-6 space-y-4">
+            {bannerPreview ? (
+              <div className="relative">
+                <img
+                  src={bannerPreview}
+                  alt="Banner preview"
+                  className="w-full h-48 object-cover rounded-lg"
+                />
+                <Button
+                  variant="destructive"
+                  size="icon"
+                  className="absolute top-2 right-2"
+                  onClick={removeBanner}
+                  type="button"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            ) : (
+              <div className="border-2 border-dashed border-border rounded-lg p-8 text-center">
+                <Upload className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
+                <p className="text-sm text-muted-foreground mb-2">
+                  Upload banner image (Max 5MB)
+                </p>
+                <Input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleBannerChange}
+                  className="max-w-xs mx-auto"
+                />
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Basic Information */}
         <Card>
           <CardHeader>
             <CardTitle className="text-xl">Basic Information</CardTitle>
           </CardHeader>
           <Separator />
-          <CardContent className=" space-y-4">
+          <CardContent className="pt-6 space-y-4">
             <div className="grid gap-4 md:grid-cols-2">
-
-              {/* title */}
+              {/* Title */}
               <div className="space-y-2 md:col-span-2">
                 <Label htmlFor="title">
                   Title <span className="text-destructive">*</span>
@@ -314,15 +557,14 @@ export default function AddOfferPage() {
                   id="title"
                   value={form.title}
                   onChange={(e) => set("title", e.target.value)}
-                  placeholder="e.g. Vegetable Fest"
-                  className={errors.title ? "border-destructive" : ""}
+                  onBlur={() => handleBlur("title")}
+                  placeholder="e.g. Summer Sale 2024"
+                  className={errors.title && touched.title ? "border-destructive focus-visible:ring-destructive" : ""}
                 />
-                {errors.title && (
-                  <p className="text-xs text-destructive">{errors.title}</p>
-                )}
+                {touched.title && <ErrorMessage message={errors.title} />}
               </div>
 
-              {/* description */}
+              {/* Description */}
               <div className="space-y-2 md:col-span-2">
                 <Label htmlFor="description">Description</Label>
                 <Textarea
@@ -334,40 +576,62 @@ export default function AddOfferPage() {
                 />
               </div>
 
+              {/* Tag */}
+              <div className="space-y-2">
+                <Label htmlFor="tag">Tag</Label>
+                <Input
+                  id="tag"
+                  value={form.tag}
+                  onChange={(e) => set("tag", e.target.value)}
+                  placeholder="e.g. HOT DEAL"
+                />
+              </div>
+
+              {/* Background Color */}
+              <div className="space-y-2">
+                <Label htmlFor="bg_color">Background Color</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="bg_color"
+                    type="color"
+                    value={form.bg_color}
+                    onChange={(e) => set("bg_color", e.target.value)}
+                    className="w-20 h-10"
+                  />
+                  <Input
+                    value={form.bg_color}
+                    onChange={(e) => set("bg_color", e.target.value)}
+                    placeholder="#6366f1"
+                    className="flex-1"
+                  />
+                </div>
+              </div>
             </div>
           </CardContent>
         </Card>
 
-        {/* ── Section 2: Offer Configuration ───────────────────────── */}
-        {/* Maps to: offer_type, discount_type, discount_value, discount */}
+        {/* Offer Configuration */}
         <Card>
           <CardHeader>
             <CardTitle className="text-xl">Offer Configuration</CardTitle>
           </CardHeader>
           <Separator />
-          <CardContent className=" space-y-4">
+          <CardContent className="pt-6 space-y-4">
             <div className="grid gap-4 md:grid-cols-2">
-
-              {/* offer_type */}
+              {/* Offer Type */}
               <div className="space-y-2">
                 <Label>
                   Offer Type <span className="text-destructive">*</span>
                 </Label>
                 <Select
                   value={form.offer_type}
-                  onValueChange={(v) => {
-                    set("offer_type", v as OfferType);
-                    // Reset discount fields when switching to free_delivery
-                    if (v === "free_delivery") {
-                      set("discount_type", "");
-                      set("discount_value", "");
-                    }
-                  }}
+                  onValueChange={(v) => set("offer_type", v as OfferType)}
                 >
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="banner">Banner</SelectItem>
                     <SelectItem value="discount">Discount</SelectItem>
                     <SelectItem value="bogo">BOGO</SelectItem>
                     <SelectItem value="bundle">Bundle</SelectItem>
@@ -375,11 +639,12 @@ export default function AddOfferPage() {
                     <SelectItem value="clearance">Clearance</SelectItem>
                     <SelectItem value="combo">Combo</SelectItem>
                     <SelectItem value="flash_sale">Flash Sale</SelectItem>
+                    <SelectItem value="seasonal">Seasonal</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
-              {/* discount_type — only shown when offer type supports it */}
+              {/* Discount Type */}
               {showDiscountFields && (
                 <div className="space-y-2">
                   <Label>Discount Type</Label>
@@ -392,16 +657,16 @@ export default function AddOfferPage() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="percentage">Percentage (%)</SelectItem>
-                      <SelectItem value="flat">Flat Amount (₹)</SelectItem>
-                      <SelectItem value="bogo">BOGO</SelectItem>
+                      <SelectItem value="flat">Fixed Amount (₹)</SelectItem>
+                      <SelectItem value="bogo">Buy X Get Y</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
               )}
 
-              {/* discount_value — only shown when type is percentage or flat */}
+              {/* Discount Value */}
               {showDiscountValue && (
-                <div className="space-y-2">
+                <div className="space-y-2 md:col-span-2">
                   <Label>
                     Discount Value{" "}
                     <span className="text-muted-foreground font-normal">
@@ -410,55 +675,76 @@ export default function AddOfferPage() {
                     <span className="text-destructive">*</span>
                   </Label>
                   <div className="flex items-center gap-3">
-                    <div className="relative flex-1">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm pointer-events-none">
-                        {form.discount_type === "percentage" ? "%" : "₹"}
-                      </span>
-                      <Input
-                        type="number"
-                        min={0}
-                        max={form.discount_type === "percentage" ? 100 : undefined}
-                        value={form.discount_value}
-                        onChange={(e) =>
-                          set(
-                            "discount_value",
-                            e.target.value === "" ? "" : Number(e.target.value)
-                          )
-                        }
-                        className={`pl-8 font-mono ${errors.discount_value ? "border-destructive" : ""}`}
-                      />
-                    </div>
-                    {/* Live preview of the `discount` column value */}
+                    <Input
+                      type="number"
+                      min={0}
+                      max={form.discount_type === "percentage" ? 100 : undefined}
+                      step={form.discount_type === "percentage" ? 1 : 0.01}
+                      value={form.discount_value}
+                      onChange={(e) =>
+                        set(
+                          "discount_value",
+                          e.target.value === "" ? "" : Number(e.target.value)
+                        )
+                      }
+                      onBlur={() => handleBlur("discount_value")}
+                      className={`font-mono ${errors.discount_value && touched.discount_value ? "border-destructive focus-visible:ring-destructive" : ""}`}
+                    />
                     {discountPreview && (
                       <Badge className="bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400 font-mono whitespace-nowrap">
                         {discountPreview}
                       </Badge>
                     )}
                   </div>
-                  {errors.discount_value && (
-                    <p className="text-xs text-destructive">{errors.discount_value}</p>
-                  )}
-                  <p className="text-xs text-muted-foreground">
-                    Stored as <code className="font-mono bg-muted px-1 rounded text-xs">{discountPreview || "…"}</code> in the{" "}
-                    <code className="font-mono bg-muted px-1 rounded text-xs">discount</code> column
-                  </p>
+                  {touched.discount_value && <ErrorMessage message={errors.discount_value} />}
                 </div>
               )}
 
+              {/* Display Order */}
+              <div className="space-y-2">
+                <Label htmlFor="display_order">Display Order</Label>
+                <Input
+                  id="display_order"
+                  type="number"
+                  min={0}
+                  value={form.display_order}
+                  onChange={(e) =>
+                    set("display_order", e.target.value === "" ? "" : Number(e.target.value))
+                  }
+                  onBlur={() => handleBlur("display_order")}
+                  placeholder="0"
+                  className={errors.display_order && touched.display_order ? "border-destructive focus-visible:ring-destructive" : ""}
+                />
+                {touched.display_order && <ErrorMessage message={errors.display_order} />}
+              </div>
+
+              {/* Active Status */}
+              <div className="space-y-2">
+                <Label>Status</Label>
+                <div className="flex items-center gap-2 h-10">
+                  <input
+                    type="checkbox"
+                    id="is_active"
+                    checked={form.is_active}
+                    onChange={(e) => set("is_active", e.target.checked)}
+                    className="h-4 w-4 accent-primary"
+                  />
+                  <Label htmlFor="is_active" className="cursor-pointer">
+                    Active
+                  </Label>
+                </div>
+              </div>
             </div>
           </CardContent>
         </Card>
 
-        {/* ── Section 3: Applicable To ──────────────────────────────── */}
-        {/* Maps to: applicable_to, applicable_id */}
+        {/* Applicable To */}
         <Card>
           <CardHeader>
             <CardTitle className="text-xl">Applicable To</CardTitle>
           </CardHeader>
           <Separator />
-          <CardContent className=" space-y-4">
-
-            {/* applicable_to */}
+          <CardContent className="pt-6 space-y-4">
             <div className="space-y-2">
               <Label>
                 Scope <span className="text-destructive">*</span>
@@ -477,113 +763,82 @@ export default function AddOfferPage() {
                 <SelectContent>
                   <SelectItem value="all">All Items</SelectItem>
                   <SelectItem value="category">Category</SelectItem>
+                  <SelectItem value="subcategory">Subcategory</SelectItem>
                   <SelectItem value="vendor">Vendor</SelectItem>
                   <SelectItem value="product">Product</SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
-            {/* applicable_id — single select for category / vendor */}
-            {(form.applicable_to === "category" || form.applicable_to === "vendor") && (
+            {(form.applicable_to === "category" || form.applicable_to === "subcategory" || form.applicable_to === "vendor") && (
               <div className="space-y-2">
                 <Label>
-                  Select {form.applicable_to === "category" ? "Category" : "Vendor"}{" "}
+                  Select {form.applicable_to === "category" ? "Category" : form.applicable_to === "subcategory" ? "Subcategory" : "Vendor"}{" "}
                   <span className="text-destructive">*</span>
                 </Label>
                 <Select
                   value={form.applicable_id}
-                  onValueChange={(v) => set("applicable_id", v)}
+                  onValueChange={(v) => {
+                    set("applicable_id", v);
+                    handleBlur("applicable_id");
+                  }}
                 >
-                  <SelectTrigger className={errors.applicable_id ? "border-destructive" : ""}>
+                  <SelectTrigger className={errors.applicable_id && touched.applicable_id ? "border-destructive focus-visible:ring-destructive" : ""}>
                     <SelectValue
-                      placeholder={`Choose a ${form.applicable_to === "category" ? "category" : "vendor"}…`}
+                      placeholder={`Choose a ${form.applicable_to}…`}
                     />
                   </SelectTrigger>
                   <SelectContent>
-                    {scopeOptions.map((opt) => (
-                      <SelectItem key={opt.id} value={opt.id}>
-                        {opt.name}
-                      </SelectItem>
-                    ))}
+                    {scopeOptions.length === 0 ? (
+                      <div className="p-2 text-sm text-muted-foreground">No options available</div>
+                    ) : (
+                      scopeOptions.map((opt: any) => (
+                        <SelectItem key={opt.id} value={form.applicable_to === "vendor" ? opt.user_id : opt.id}>
+                          {opt.name || opt.store_name}
+                        </SelectItem>
+                      ))
+                    )}
                   </SelectContent>
                 </Select>
-                {errors.applicable_id && (
-                  <p className="text-xs text-destructive">{errors.applicable_id}</p>
-                )}
-                {form.applicable_id && (
-                  <p className="text-xs text-muted-foreground">
-                    Stored as{" "}
-                    <code className="font-mono bg-muted px-1 rounded text-xs">
-                      {form.applicable_id}
-                    </code>{" "}
-                    in{" "}
-                    <code className="font-mono bg-muted px-1 rounded text-xs">
-                      applicable_id
-                    </code>
-                  </p>
-                )}
+                {touched.applicable_id && <ErrorMessage message={errors.applicable_id} />}
               </div>
             )}
-
-            {/* applicable_to = "product" → applicable_id is NULL, products go to join table */}
-            {form.applicable_to === "product" && (
-              <p className="text-xs text-muted-foreground bg-muted/50 border border-border rounded-md px-3 py-2">
-                <code className="font-mono">applicable_id</code> will be{" "}
-                <code className="font-mono">NULL</code>. Selected products are stored
-                in the <code className="font-mono">offer_products</code> join table.
-              </p>
-            )}
-
-            {/* applicable_to = "all" → no applicable_id */}
-            {form.applicable_to === "all" && (
-              <p className="text-xs text-muted-foreground bg-muted/50 border border-border rounded-md px-3 py-2">
-                <code className="font-mono">applicable_id</code> will be{" "}
-                <code className="font-mono">NULL</code>. This offer applies to all
-                items site-wide.
-              </p>
-            )}
-
           </CardContent>
         </Card>
 
-        {/* ── Section 4: Conditions ─────────────────────────────────── */}
-        {/* Maps to: min_purchase (if you add it), start_date, end_date */}
+        {/* Conditions */}
         <Card>
           <CardHeader>
             <CardTitle className="text-xl">Conditions</CardTitle>
           </CardHeader>
           <Separator />
-          <CardContent className=" space-y-4">
+          <CardContent className="pt-6 space-y-4">
             <div className="grid gap-4 md:grid-cols-2">
-
-              {/* min_purchase */}
+              {/* Min Purchase */}
               <div className="space-y-2">
                 <Label htmlFor="min_purchase">Minimum Purchase Amount</Label>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm pointer-events-none">
-                    ₹
-                  </span>
-                  <Input
-                    id="min_purchase"
-                    type="number"
-                    min={0}
-                    value={form.min_purchase}
-                    onChange={(e) =>
-                      set(
-                        "min_purchase",
-                        e.target.value === "" ? "" : Number(e.target.value)
-                      )
-                    }
-                    placeholder="0"
-                    className="pl-7 font-mono"
-                  />
-                </div>
-                <p className="text-xs text-muted-foreground">Leave empty for no minimum</p>
+                <Input
+                  id="min_purchase"
+                  type="number"
+                  min={0}
+                  step={0.01}
+                  value={form.min_purchase_amount}
+                  onChange={(e) =>
+                    set(
+                      "min_purchase_amount",
+                      e.target.value === "" ? "" : Number(e.target.value)
+                    )
+                  }
+                  onBlur={() => handleBlur("min_purchase_amount")}
+                  placeholder="0"
+                  className={`font-mono ${errors.min_purchase_amount && touched.min_purchase_amount ? "border-destructive focus-visible:ring-destructive" : ""}`}
+                />
+                {touched.min_purchase_amount && <ErrorMessage message={errors.min_purchase_amount} />}
               </div>
 
-              <div /> {/* spacer */}
+              <div />
 
-              {/* start_date → stored as timestamptz via now() */}
+              {/* Start Date */}
               <div className="space-y-2">
                 <Label htmlFor="start_date">
                   Start Date <span className="text-destructive">*</span>
@@ -593,14 +848,13 @@ export default function AddOfferPage() {
                   type="datetime-local"
                   value={form.start_date}
                   onChange={(e) => set("start_date", e.target.value)}
-                  className={errors.start_date ? "border-destructive" : ""}
+                  onBlur={() => handleBlur("start_date")}
+                  className={errors.start_date && touched.start_date ? "border-destructive focus-visible:ring-destructive" : ""}
                 />
-                {errors.start_date && (
-                  <p className="text-xs text-destructive">{errors.start_date}</p>
-                )}
+                {touched.start_date && <ErrorMessage message={errors.start_date} />}
               </div>
 
-              {/* end_date → NULL = no expiry, otherwise now() + interval */}
+              {/* End Date */}
               <div className="space-y-2">
                 <Label htmlFor="end_date">End Date</Label>
                 <Input
@@ -608,23 +862,16 @@ export default function AddOfferPage() {
                   type="datetime-local"
                   value={form.end_date}
                   onChange={(e) => set("end_date", e.target.value)}
-                  className={errors.end_date ? "border-destructive" : ""}
+                  onBlur={() => handleBlur("end_date")}
+                  className={errors.end_date && touched.end_date ? "border-destructive focus-visible:ring-destructive" : ""}
                 />
-                {errors.end_date && (
-                  <p className="text-xs text-destructive">{errors.end_date}</p>
-                )}
-                <p className="text-xs text-muted-foreground">
-                  Leave empty to store as <code className="font-mono bg-muted px-1 rounded text-xs">NULL</code> (no expiry)
-                </p>
+                {touched.end_date && <ErrorMessage message={errors.end_date} />}
               </div>
-
             </div>
           </CardContent>
         </Card>
 
-        {/* ── Section 5: Product Selection ──────────────────────────── */}
-        {/* Only shown when applicable_to = "product"                   */}
-        {/* IDs go to the offer_products join table, NOT applicable_id  */}
+        {/* Product Selection */}
         {form.applicable_to === "product" && (
           <Card>
             <CardHeader>
@@ -639,69 +886,91 @@ export default function AddOfferPage() {
             </CardHeader>
             <Separator />
             <CardContent className="p-0">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-10 pl-6" />
-                    <TableHead>Product</TableHead>
-                    <TableHead>SKU</TableHead>
-                    <TableHead className="text-right pr-6">Price</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {PRODUCTS.map((p) => {
-                    const sel = form.selected_product_ids.includes(p.id);
-                    return (
-                      <TableRow
-                        key={p.id}
-                        className="cursor-pointer"
-                        onClick={() =>
-                          set(
-                            "selected_product_ids",
-                            sel
-                              ? form.selected_product_ids.filter((x) => x !== p.id)
-                              : [...form.selected_product_ids, p.id]
-                          )
-                        }
-                      >
-                        <TableCell className="pl-6">
-                          <input
-                            type="checkbox"
-                            checked={sel}
-                            onChange={() => {}}
-                            onClick={(e) => e.stopPropagation()}
-                            className="h-4 w-4 accent-primary"
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <span className="text-xl">{p.image}</span>
-                            <span className="font-medium">{p.name}</span>
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-muted-foreground font-mono text-sm">
-                          {p.sku}
-                        </TableCell>
-                        <TableCell className="text-right font-mono pr-6">
-                          ₹{p.price}
-                        </TableCell>
+              {products.length === 0 ? (
+                <div className="py-12 text-center text-muted-foreground">
+                  <p>No products available</p>
+                </div>
+              ) : (
+                <div className="max-h-96 overflow-y-auto">
+                  <Table>
+                    <TableHeader className="sticky top-0 bg-background">
+                      <TableRow>
+                        <TableHead className="w-10 pl-6" />
+                        <TableHead>Product</TableHead>
+                        <TableHead>SKU</TableHead>
+                        <TableHead>Category</TableHead>
+                        <TableHead className="text-right pr-6">Price</TableHead>
                       </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {products.map((p: any) => {
+                        const sel = form.selected_product_ids.includes(p.id);
+                        return (
+                          <TableRow
+                            key={p.id}
+                            className="cursor-pointer hover:bg-muted/50"
+                            onClick={() => {
+                              const newSelection = sel
+                                ? form.selected_product_ids.filter((x) => x !== p.id)
+                                : [...form.selected_product_ids, p.id];
+                              set("selected_product_ids", newSelection);
+                              setTouched((prev) => ({ ...prev, selected_product_ids: true }));
+                            }}
+                          >
+                            <TableCell className="pl-6">
+                              <input
+                                type="checkbox"
+                                checked={sel}
+                                onChange={() => {}}
+                                onClick={(e) => e.stopPropagation()}
+                                className="h-4 w-4 accent-primary"
+                              />
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                {p.image && (
+                                  <img 
+                                    src={p.image} 
+                                    alt={p.name}
+                                    className="h-8 w-8 rounded object-cover"
+                                  />
+                                )}
+                                <span className="font-medium">{p.name}</span>
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-muted-foreground font-mono text-sm">
+                              {p.sku || "—"}
+                            </TableCell>
+                            <TableCell className="text-muted-foreground text-sm">
+                              {p.category?.name || "—"}
+                            </TableCell>
+                            <TableCell className="text-right font-mono pr-6">
+                              ₹{p.price}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+              {errors.applicable_id && form.applicable_to === "product" && touched.selected_product_ids && (
+                <div className="p-4 border-t">
+                  <ErrorMessage message={errors.applicable_id} />
+                </div>
+              )}
             </CardContent>
           </Card>
         )}
 
-        {/* ── Action buttons ────────────────────────────────────────── */}
+        {/* Action buttons */}
         <div className="flex items-center justify-between pb-10">
-          <Button variant="outline" asChild>
+          <Button variant="outline" asChild disabled={saving}>
             <Link href="/admin/offers">Cancel</Link>
           </Button>
           <Button
             onClick={handleSubmit}
-            disabled={saving || saved}
+            disabled={saving}
             className="min-w-[130px]"
           >
             {saving ? (
@@ -709,15 +978,11 @@ export default function AddOfferPage() {
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 Saving…
               </>
-            ) : saved ? (
+            ) : (
               <>
                 <Check className="mr-2 h-4 w-4" />
-                Saved!
+                {isEdit ? "Save Changes" : "Create Offer"}
               </>
-            ) : isEdit ? (
-              "Save Changes"
-            ) : (
-              "Save Offer"
             )}
           </Button>
         </div>

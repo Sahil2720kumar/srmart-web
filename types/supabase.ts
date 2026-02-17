@@ -339,6 +339,7 @@ export type CouponApplicableTo = 'all' | 'category' | 'vendor' | 'product';
 export type OfferApplicableTo =
   | 'all'
   | 'category'
+  | 'subcategory'
   | 'vendor'
   | 'product';
 

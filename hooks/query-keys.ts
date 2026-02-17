@@ -160,12 +160,21 @@ export const queryKeys = {
   offers: {
     all: ['offers'] as const,
     lists: () => [...queryKeys.offers.all, 'list'] as const,
-    list: (filters?: Record<string, any>) => [...queryKeys.offers.lists(), filters] as const,
+    list: (filters?: any) => [...queryKeys.offers.lists(), filters] as const,
+    active: () => [...queryKeys.offers.all, 'active'] as const,
+    banners: () => [...queryKeys.offers.all, 'banners'] as const,
     details: () => [...queryKeys.offers.all, 'detail'] as const,
     detail: (id: string) => [...queryKeys.offers.details(), id] as const,
-    active: () => [...queryKeys.offers.all, 'active'] as const,
-    products: (offerId: string) => [...queryKeys.offers.detail(offerId), 'products'] as const,
+    withProducts: (id: string) => [...queryKeys.offers.detail(id), 'products'] as const,
+    products: (id: string) => [...queryKeys.offers.detail(id), 'products-list'] as const,
+    byType: (type: string) => [...queryKeys.offers.all, 'type', type] as const,
+    byApplicability: (applicableTo: string, applicableId: string) => 
+      [...queryKeys.offers.all, 'applicable', applicableTo, applicableId] as const,
+    byProduct: (productId: string) => 
+      [...queryKeys.offers.all, 'product', productId] as const,
+    stats: (id: string) => [...queryKeys.offers.detail(id), 'stats'] as const,
   },
+
 
   // Flash Sales
   flashSales: {
