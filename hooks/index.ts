@@ -6,9 +6,11 @@ export { queryKeys } from './query-keys';
 // Vendors
 export * from './vendors/useVendors';
 export * from './vendors/useKycDocuments';
+export * from './vendors/useVendorBankDetails';
 
 //deliverys
 export * from './deliverys/useDeliveryBoys';
+export * from './deliverys/useDeliveryBankDetails';
 
 // Customers
 export * from './customers/useCustomers';
@@ -27,3 +29,5 @@ export * from './cart/useCart';
 
 // Wallet
 export * from './wallet/useWallet';
+export * from './wallet/useDeliveryWallet';
+export * from './wallet/usePayouts';

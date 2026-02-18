@@ -27,134 +27,65 @@ import {
   Star,
   Bike,
   Package,
+  Loader2,
+  XCircle,
 } from "lucide-react";
 import Link from "next/link";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  useAdminDeliveryWalletDetail,
+  useDeliveryWalletTransactions,
+  useDeliveryCashoutRequests,
+  useApproveDeliveryCashout,
+  useCompleteDeliveryCashout,
+  useRejectDeliveryCashout,
+} from "@/hooks/wallet/useDeliveryWallet";
+import { CashoutRequest } from "@/types/supabase";
+import { toast } from "sonner";
+import { useParams } from "next/navigation";
+import { useAuth } from "@/providers/AuthProvider";
 
-// Mock Data
-const mockPartnerDetail = {
-  id: "D001",
-  partnerName: "Rajesh Kumar",
-  email: "rajesh.kumar@delivery.com",
-  phone: "+91 98765 43210",
-  availableBalance: 8920.00,
-  pendingBalance: 1250.00,
-  lifetimeEarnings: 89234.50,
-  totalWithdrawn: 80314.50,
-  totalDeliveries: 1234,
-  rating: 4.8,
-  isOnline: true,
-  bankStatus: "Verified",
-  bankDetails: {
-    accountName: "Rajesh Kumar",
-    accountNumber: "****5678",
-    ifscCode: "ICIC0001234",
-    bankName: "ICICI Bank",
-    branch: "Koramangala, Bangalore",
-    verifiedDate: "2024-01-20",
-  },
-  earningsTimeline: {
-    today: 1250.00,
-    week: 5840.50,
-    month: 23670.00,
-  },
-};
-
-const mockTransactions = [
-  {
-    id: "TXN001",
-    type: "Credit",
-    amount: 85.00,
-    deliveryId: "DEL12345",
-    balanceAfter: 8920.00,
-    date: "2024-02-13T12:30:00",
-    description: "Delivery fee",
-  },
-  {
-    id: "TXN002",
-    type: "Credit",
-    amount: 95.50,
-    deliveryId: "DEL12346",
-    balanceAfter: 8835.00,
-    date: "2024-02-13T11:45:00",
-    description: "Delivery fee + tip",
-  },
-  {
-    id: "TXN003",
-    type: "Debit",
-    amount: 5000.00,
-    deliveryId: null,
-    balanceAfter: 8739.50,
-    date: "2024-02-13T10:00:00",
-    description: "Cashout to bank",
-  },
-  {
-    id: "TXN004",
-    type: "Credit",
-    amount: 75.00,
-    deliveryId: "DEL12347",
-    balanceAfter: 13739.50,
-    date: "2024-02-13T09:20:00",
-    description: "Delivery fee",
-  },
-  {
-    id: "TXN005",
-    type: "Credit",
-    amount: 110.00,
-    deliveryId: "DEL12348",
-    balanceAfter: 13664.50,
-    date: "2024-02-13T08:15:00",
-    description: "Delivery fee + bonus",
-  },
-];
-
-const mockCashoutRequests = [
-  {
-    id: "CASH001",
-    amount: 1250.00,
-    status: "Pending",
-    requestDate: "2024-02-13T09:30:00",
-    completedDate: null,
-    utrNumber: null,
-  },
-  {
-    id: "CASH002",
-    amount: 5000.00,
-    status: "Completed",
-    requestDate: "2024-02-10T10:00:00",
-    completedDate: "2024-02-10T14:30:00",
-    utrNumber: "UTR789456123",
-  },
-  {
-    id: "CASH003",
-    amount: 3000.00,
-    status: "Completed",
-    requestDate: "2024-02-08T15:30:00",
-    completedDate: "2024-02-08T18:45:00",
-    utrNumber: "UTR456789123",
-  },
-  {
-    id: "CASH004",
-    amount: 4500.00,
-    status: "Completed",
-    requestDate: "2024-02-05T12:00:00",
-    completedDate: "2024-02-05T16:20:00",
-    utrNumber: "UTR321654987",
-  },
-];
-
-export default function DeliveryWalletDetailPage({ params }) {
+export default function DeliveryWalletDetailPage() {
+  const {partnerId} = useParams<{partnerId:string}>();
   const [activeTab, setActiveTab] = useState("overview");
+  const {user}=useAuth()
+  // Dialog states
+  const [approveDialog, setApproveDialog] = useState<{ open: boolean; cashout: CashoutRequest | null }>({ open: false, cashout: null });
+  const [completeDialog, setCompleteDialog] = useState<{ open: boolean; cashout: CashoutRequest | null }>({ open: false, cashout: null });
+  const [rejectDialog, setRejectDialog] = useState<{ open: boolean; cashout: CashoutRequest | null }>({ open: false, cashout: null });
+  const [utrNumber, setUtrNumber] = useState("");
+  const [rejectionReason, setRejectionReason] = useState("");
 
-  const formatCurrency = (amount) => {
-    return new Intl.NumberFormat("en-IN", {
+  const { data: partner, isLoading: detailLoading, error: detailError } =
+    useAdminDeliveryWalletDetail(partnerId!);
+  const { data: transactions = [], isLoading: txLoading } =
+    useDeliveryWalletTransactions(partnerId!);
+  const { data: cashouts = [], isLoading: cashoutLoading } =
+    useDeliveryCashoutRequests(partnerId!);
+
+  const approveMutation = useApproveDeliveryCashout();
+  const completeMutation = useCompleteDeliveryCashout();
+  const rejectMutation = useRejectDeliveryCashout();
+
+  const formatCurrency = (amount: number) =>
+    new Intl.NumberFormat("en-IN", {
       style: "currency",
       currency: "INR",
       minimumFractionDigits: 2,
     }).format(amount);
-  };
 
-  const formatDate = (dateString) => {
+  const formatDate = (dateString: string | null) => {
+    if (!dateString) return "—";
     return new Date(dateString).toLocaleString("en-IN", {
       day: "2-digit",
       month: "short",
@@ -164,33 +95,113 @@ export default function DeliveryWalletDetailPage({ params }) {
     });
   };
 
-  const getStatusBadge = (status) => {
+  const handleApprove = async () => {
+    if (!approveDialog.cashout) return;
+    try {
+      await approveMutation.mutateAsync({
+        cashoutId: approveDialog.cashout.id,
+        approvedBy: user?.id!, // replace with actual admin userId from auth
+      });
+      toast.success("Cashout request approved");
+      setApproveDialog({ open: false, cashout: null });
+    } catch (e: any) {
+      toast.error(e.message ?? "Failed to approve");
+    }
+  };
+
+  const handleComplete = async () => {
+    if (!completeDialog.cashout || !utrNumber.trim()) return;
+    try {
+      await completeMutation.mutateAsync({
+        cashoutId: completeDialog.cashout.id,
+        transactionReference: utrNumber.trim(),
+      });
+      toast.success("Cashout marked as completed");
+      setCompleteDialog({ open: false, cashout: null });
+      setUtrNumber("");
+    } catch (e: any) {
+      toast.error(e.message ?? "Failed to complete");
+    }
+  };
+
+  const handleReject = async () => {
+    if (!rejectDialog.cashout || !rejectionReason.trim()) return;
+    try {
+      await rejectMutation.mutateAsync({
+        cashoutId: rejectDialog.cashout.id,
+        rejectionReason: rejectionReason.trim(),
+      });
+      toast.success("Cashout request rejected");
+      setRejectDialog({ open: false, cashout: null });
+      setRejectionReason("");
+    } catch (e: any) {
+      toast.error(e.message ?? "Failed to reject");
+    }
+  };
+
+  const getStatusBadge = (status: string | null) => {
     switch (status) {
-      case "Completed":
+      case "completed":
         return (
           <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100">
             <CheckCircle2 className="w-3 h-3 mr-1" />
             Completed
           </Badge>
         );
-      case "Processing":
+      case "approved":
+        return (
+          <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100">
+            <CheckCircle2 className="w-3 h-3 mr-1" />
+            Approved
+          </Badge>
+        );
+      case "pending":
         return (
           <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100">
+            <Clock className="w-3 h-3 mr-1" />
+            Pending
+          </Badge>
+        );
+      case "rejected":
+        return (
+          <Badge className="bg-red-100 text-red-700 hover:bg-red-100">
+            <AlertCircle className="w-3 h-3 mr-1" />
+            Rejected
+          </Badge>
+        );
+      case "processing":
+        return (
+          <Badge className="bg-purple-100 text-purple-700 hover:bg-purple-100">
             <Clock className="w-3 h-3 mr-1" />
             Processing
           </Badge>
         );
-      case "Failed":
-        return (
-          <Badge className="bg-red-100 text-red-700 hover:bg-red-100">
-            <AlertCircle className="w-3 h-3 mr-1" />
-            Failed
-          </Badge>
-        );
       default:
-        return null;
+        return <Badge variant="secondary">{status ?? "—"}</Badge>;
     }
   };
+
+  if (detailLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-purple-50 to-pink-50">
+        <Loader2 className="w-8 h-8 animate-spin text-purple-500" />
+      </div>
+    );
+  }
+
+  if (detailError || !partner) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-purple-50 to-pink-50">
+        <div className="text-center space-y-4">
+          <AlertCircle className="w-12 h-12 text-red-400 mx-auto" />
+          <p className="text-slate-600">Failed to load wallet details.</p>
+          <Link href="/admin/wallets/delivery">
+            <Button variant="outline">Go Back</Button>
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-purple-50 to-pink-50 p-8">
@@ -206,26 +217,26 @@ export default function DeliveryWalletDetailPage({ params }) {
             <div>
               <div className="flex items-center gap-3">
                 <h1 className="text-4xl font-bold bg-gradient-to-r from-slate-900 via-purple-900 to-pink-900 bg-clip-text text-transparent">
-                  {mockPartnerDetail.partnerName}
+                  {partner.partnerName}
                 </h1>
-                {mockPartnerDetail.isOnline && (
-                  <Badge className="bg-emerald-100 text-emerald-700">
-                    Online
-                  </Badge>
+                {partner.isOnline && (
+                  <Badge className="bg-emerald-100 text-emerald-700">Online</Badge>
                 )}
               </div>
               <p className="text-slate-600 mt-1">
-                {mockPartnerDetail.email} • {mockPartnerDetail.phone}
+                {partner.email} • {partner.phone}
               </p>
               <div className="flex items-center gap-4 mt-2">
                 <div className="flex items-center gap-1 text-sm">
                   <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
-                  <span className="font-medium">{mockPartnerDetail.rating}</span>
+                  <span className="font-medium">
+                    {partner.rating ? partner.rating.toFixed(1) : "—"}
+                  </span>
                   <span className="text-slate-500">rating</span>
                 </div>
                 <div className="flex items-center gap-1 text-sm text-slate-600">
                   <Package className="w-4 h-4" />
-                  <span className="font-medium">{mockPartnerDetail.totalDeliveries}</span>
+                  <span className="font-medium">{partner.totalDeliveries.toLocaleString()}</span>
                   <span className="text-slate-500">deliveries</span>
                 </div>
               </div>
@@ -233,13 +244,15 @@ export default function DeliveryWalletDetailPage({ params }) {
           </div>
           <Badge
             className={
-              mockPartnerDetail.bankStatus === "Verified"
+              partner.bankStatus === "Verified"
                 ? "bg-emerald-100 text-emerald-700"
-                : "bg-amber-100 text-amber-700"
+                : partner.bankStatus === "Pending"
+                ? "bg-amber-100 text-amber-700"
+                : "bg-red-100 text-red-700"
             }
           >
             <CheckCircle2 className="w-3 h-3 mr-1" />
-            Bank {mockPartnerDetail.bankStatus}
+            Bank {partner.bankStatus}
           </Badge>
         </div>
 
@@ -253,9 +266,9 @@ export default function DeliveryWalletDetailPage({ params }) {
               <div>
                 <h3 className="font-semibold text-lg">Delivery Partner Payout Flow</h3>
                 <p className="text-blue-100 text-sm mt-1">
-                  <strong>Step 1:</strong> Earnings move to Available Balance after delivery completion → 
-                  <strong>Step 2:</strong> Partner requests cashout (moves to Pending Balance) → 
-                  <strong>Step 3:</strong> Admin confirms the cashout request → 
+                  <strong>Step 1:</strong> Earnings move to Available Balance after delivery completion →{" "}
+                  <strong>Step 2:</strong> Partner requests cashout (moves to Pending Balance) →{" "}
+                  <strong>Step 3:</strong> Admin confirms the cashout request →{" "}
                   <strong>Step 4:</strong> Amount transferred to verified bank account
                 </p>
               </div>
@@ -274,7 +287,7 @@ export default function DeliveryWalletDetailPage({ params }) {
             </CardHeader>
             <CardContent>
               <div className="text-3xl font-bold">
-                {formatCurrency(mockPartnerDetail.availableBalance)}
+                {formatCurrency(partner.availableBalance)}
               </div>
               <p className="text-emerald-100 text-xs mt-2">Ready for cashout request</p>
             </CardContent>
@@ -289,7 +302,7 @@ export default function DeliveryWalletDetailPage({ params }) {
             </CardHeader>
             <CardContent>
               <div className="text-3xl font-bold">
-                {formatCurrency(mockPartnerDetail.pendingBalance)}
+                {formatCurrency(partner.pendingBalance)}
               </div>
               <p className="text-amber-100 text-xs mt-2">Awaiting admin confirmation</p>
             </CardContent>
@@ -304,7 +317,7 @@ export default function DeliveryWalletDetailPage({ params }) {
             </CardHeader>
             <CardContent>
               <div className="text-3xl font-bold">
-                {formatCurrency(mockPartnerDetail.lifetimeEarnings)}
+                {formatCurrency(partner.lifetimeEarnings)}
               </div>
               <p className="text-blue-100 text-xs mt-2">All-time total</p>
             </CardContent>
@@ -319,7 +332,7 @@ export default function DeliveryWalletDetailPage({ params }) {
             </CardHeader>
             <CardContent>
               <div className="text-3xl font-bold">
-                {formatCurrency(mockPartnerDetail.totalWithdrawn)}
+                {formatCurrency(partner.totalWithdrawn)}
               </div>
               <p className="text-purple-100 text-xs mt-2">Successful payouts</p>
             </CardContent>
@@ -336,19 +349,19 @@ export default function DeliveryWalletDetailPage({ params }) {
               <div className="p-4 bg-purple-50 rounded-lg border border-purple-100">
                 <div className="text-sm text-purple-600 font-medium">Today</div>
                 <div className="text-2xl font-bold text-purple-900 mt-1">
-                  {formatCurrency(mockPartnerDetail.earningsTimeline.today)}
+                  {formatCurrency(partner.earningsTimeline.today)}
                 </div>
               </div>
               <div className="p-4 bg-pink-50 rounded-lg border border-pink-100">
                 <div className="text-sm text-pink-600 font-medium">This Week</div>
                 <div className="text-2xl font-bold text-pink-900 mt-1">
-                  {formatCurrency(mockPartnerDetail.earningsTimeline.week)}
+                  {formatCurrency(partner.earningsTimeline.week)}
                 </div>
               </div>
               <div className="p-4 bg-indigo-50 rounded-lg border border-indigo-100">
                 <div className="text-sm text-indigo-600 font-medium">This Month</div>
                 <div className="text-2xl font-bold text-indigo-900 mt-1">
-                  {formatCurrency(mockPartnerDetail.earningsTimeline.month)}
+                  {formatCurrency(partner.earningsTimeline.month)}
                 </div>
               </div>
             </div>
@@ -356,65 +369,85 @@ export default function DeliveryWalletDetailPage({ params }) {
         </Card>
 
         {/* Bank Details */}
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="flex items-center gap-2">
-              <Building2 className="w-5 h-5" />
-              Bank Account Details
-            </CardTitle>
-            <Badge className="bg-emerald-100 text-emerald-700">
-              <CheckCircle2 className="w-3 h-3 mr-1" />
-              Verified on {new Date(mockPartnerDetail.bankDetails.verifiedDate).toLocaleDateString()}
-            </Badge>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-4">
-                <div>
-                  <label className="text-sm text-slate-600">Account Name</label>
-                  <div className="font-medium mt-1 flex items-center gap-2">
-                    <CreditCard className="w-4 h-4 text-slate-400" />
-                    {mockPartnerDetail.bankDetails.accountName}
+        {partner.bankDetails ? (
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <CardTitle className="flex items-center gap-2">
+                <Building2 className="w-5 h-5" />
+                Bank Account Details
+              </CardTitle>
+              <Badge className="bg-emerald-100 text-emerald-700">
+                <CheckCircle2 className="w-3 h-3 mr-1" />
+                {partner.bankDetails.verifiedDate
+                  ? `Verified on ${new Date(partner.bankDetails.verifiedDate).toLocaleDateString()}`
+                  : "Verified"}
+              </Badge>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-sm text-slate-600">Account Name</label>
+                    <div className="font-medium mt-1 flex items-center gap-2">
+                      <CreditCard className="w-4 h-4 text-slate-400" />
+                      {partner.bankDetails.accountName}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-sm text-slate-600">Account Number</label>
+                    <div className="font-medium mt-1">{partner.bankDetails.accountNumber}</div>
+                  </div>
+                  <div>
+                    <label className="text-sm text-slate-600">IFSC Code</label>
+                    <div className="font-medium mt-1">{partner.bankDetails.ifscCode}</div>
                   </div>
                 </div>
-                <div>
-                  <label className="text-sm text-slate-600">Account Number</label>
-                  <div className="font-medium mt-1">
-                    {mockPartnerDetail.bankDetails.accountNumber}
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-sm text-slate-600">Bank Name</label>
+                    <div className="font-medium mt-1">{partner.bankDetails.bankName}</div>
                   </div>
-                </div>
-                <div>
-                  <label className="text-sm text-slate-600">IFSC Code</label>
-                  <div className="font-medium mt-1">
-                    {mockPartnerDetail.bankDetails.ifscCode}
+                  <div>
+                    <label className="text-sm text-slate-600">Branch</label>
+                    <div className="font-medium mt-1">{partner.bankDetails.branch || "—"}</div>
                   </div>
+                  {partner.bankDetails.upiId && (
+                    <div>
+                      <label className="text-sm text-slate-600">UPI ID</label>
+                      <div className="font-medium mt-1">{partner.bankDetails.upiId}</div>
+                    </div>
+                  )}
                 </div>
               </div>
-              <div className="space-y-4">
-                <div>
-                  <label className="text-sm text-slate-600">Bank Name</label>
-                  <div className="font-medium mt-1">
-                    {mockPartnerDetail.bankDetails.bankName}
-                  </div>
-                </div>
-                <div>
-                  <label className="text-sm text-slate-600">Branch</label>
-                  <div className="font-medium mt-1">
-                    {mockPartnerDetail.bankDetails.branch}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        ) : (
+          <Card className="border-dashed">
+            <CardContent className="pt-6 text-center text-slate-500">
+              <Building2 className="w-8 h-8 mx-auto mb-2 text-slate-300" />
+              No bank account details added yet
+            </CardContent>
+          </Card>
+        )}
 
         {/* Tabs Section */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-col">
           <TabsList className="grid w-full max-w-md grid-cols-2">
-            <TabsTrigger className="data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm" value="overview">Transactions</TabsTrigger>
-            <TabsTrigger className="data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm" value="cashouts">Cashout Requests</TabsTrigger>
+            <TabsTrigger
+              className="data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm"
+              value="overview"
+            >
+              Transactions
+            </TabsTrigger>
+            <TabsTrigger
+              className="data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm"
+              value="cashouts"
+            >
+              Cashout Requests
+            </TabsTrigger>
           </TabsList>
 
+          {/* Transactions Tab */}
           <TabsContent value="overview" className="mt-6">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between">
@@ -432,59 +465,72 @@ export default function DeliveryWalletDetailPage({ params }) {
                         <TableHead>Date & Time</TableHead>
                         <TableHead>Type</TableHead>
                         <TableHead>Amount</TableHead>
-                        <TableHead>Delivery ID</TableHead>
+                        <TableHead>Order ID</TableHead>
                         <TableHead>Description</TableHead>
                         <TableHead>Balance After</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {mockTransactions.map((txn) => (
-                        <TableRow key={txn.id}>
-                          <TableCell className="text-sm">
-                            {formatDate(txn.date)}
-                          </TableCell>
-                          <TableCell>
-                            <Badge
-                              variant={txn.type === "Credit" ? "default" : "secondary"}
-                              className={
-                                txn.type === "Credit"
-                                  ? "bg-emerald-100 text-emerald-700"
-                                  : "bg-red-100 text-red-700"
-                              }
-                            >
-                              {txn.type}
-                            </Badge>
-                          </TableCell>
-                          <TableCell
-                            className={`font-semibold ${
-                              txn.type === "Credit"
-                                ? "text-emerald-600"
-                                : "text-red-600"
-                            }`}
-                          >
-                            {txn.type === "Credit" ? "+" : "-"}
-                            {formatCurrency(txn.amount)}
-                          </TableCell>
-                          <TableCell>
-                            {txn.deliveryId ? (
-                              <Link
-                                href={`/admin/deliveries/${txn.deliveryId}`}
-                                className="text-blue-600 hover:underline"
-                              >
-                                {txn.deliveryId}
-                              </Link>
-                            ) : (
-                              <span className="text-slate-400">-</span>
-                            )}
-                          </TableCell>
-                          <TableCell className="text-slate-600">
-                            {txn.description}
-                          </TableCell>
-                          <TableCell className="font-medium">
-                            {formatCurrency(txn.balanceAfter)}
+                      {txLoading ? (
+                        <TableRow>
+                          <TableCell colSpan={6} className="text-center py-8">
+                            <Loader2 className="w-6 h-6 animate-spin mx-auto text-slate-400" />
                           </TableCell>
                         </TableRow>
-                      ))}
+                      ) : transactions.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={6} className="text-center text-slate-500 py-8">
+                            No transactions found
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        transactions.map((txn) => (
+                          <TableRow key={txn.id}>
+                            <TableCell className="text-sm">
+                              {formatDate(txn.created_at)}
+                            </TableCell>
+                            <TableCell>
+                              <Badge
+                                className={
+                                  txn.transaction_type === "credit"
+                                    ? "bg-emerald-100 text-emerald-700"
+                                    : "bg-red-100 text-red-700"
+                                }
+                              >
+                                {txn.transaction_type === "credit" ? "Credit" : "Debit"}
+                              </Badge>
+                            </TableCell>
+                            <TableCell
+                              className={`font-semibold ${
+                                txn.transaction_type === "credit"
+                                  ? "text-emerald-600"
+                                  : "text-red-600"
+                              }`}
+                            >
+                              {txn.transaction_type === "credit" ? "+" : "-"}
+                              {formatCurrency(txn.amount)}
+                            </TableCell>
+                            <TableCell>
+                              {txn.order_id ? (
+                                <Link
+                                  href={`/admin/orders/${txn.order_id}`}
+                                  className="text-blue-600 hover:underline"
+                                >
+                                  {txn.order_id.slice(0, 8)}...
+                                </Link>
+                              ) : (
+                                <span className="text-slate-400">—</span>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-slate-600">
+                              {txn.description}
+                            </TableCell>
+                            <TableCell className="font-medium">
+                              {formatCurrency(txn.balance_after)}
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      )}
                     </TableBody>
                   </Table>
                 </div>
@@ -492,6 +538,7 @@ export default function DeliveryWalletDetailPage({ params }) {
             </Card>
           </TabsContent>
 
+          {/* Cashout Requests Tab */}
           <TabsContent value="cashouts" className="mt-6">
             <Card>
               <CardHeader>
@@ -502,44 +549,99 @@ export default function DeliveryWalletDetailPage({ params }) {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Request ID</TableHead>
+                        <TableHead>Request #</TableHead>
                         <TableHead>Amount</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead>Request Date</TableHead>
                         <TableHead>Completed Date</TableHead>
                         <TableHead>UTR Number</TableHead>
-                        <TableHead className="text-right">Action</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {mockCashoutRequests.map((request) => (
-                        <TableRow key={request.id}>
-                          <TableCell className="font-medium">
-                            {request.id}
-                          </TableCell>
-                          <TableCell className="font-semibold">
-                            {formatCurrency(request.amount)}
-                          </TableCell>
-                          <TableCell>{getStatusBadge(request.status)}</TableCell>
-                          <TableCell className="text-sm">
-                            {formatDate(request.requestDate)}
-                          </TableCell>
-                          <TableCell className="text-sm">
-                            {request.completedDate
-                              ? formatDate(request.completedDate)
-                              : "-"}
-                          </TableCell>
-                          <TableCell className="font-mono text-sm">
-                            {request.utrNumber || "-"}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <Button variant="ghost" size="sm" className="gap-2">
-                              <Eye className="w-4 h-4" />
-                              View
-                            </Button>
+                      {cashoutLoading ? (
+                        <TableRow>
+                          <TableCell colSpan={7} className="text-center py-8">
+                            <Loader2 className="w-6 h-6 animate-spin mx-auto text-slate-400" />
                           </TableCell>
                         </TableRow>
-                      ))}
+                      ) : cashouts.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={7} className="text-center text-slate-500 py-8">
+                            No cashout requests found
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        cashouts.map((req) => (
+                          <TableRow key={req.id}>
+                            <TableCell className="font-medium font-mono text-sm">
+                              {req.request_number}
+                            </TableCell>
+                            <TableCell className="font-semibold">
+                              {formatCurrency(req.amount)}
+                            </TableCell>
+                            <TableCell>{getStatusBadge(req.status)}</TableCell>
+                            <TableCell className="text-sm">
+                              {formatDate(req.request_date ?? req.created_at)}
+                            </TableCell>
+                            <TableCell className="text-sm">
+                              {req.completed_at ? formatDate(req.completed_at) : "—"}
+                            </TableCell>
+                            <TableCell className="font-mono text-sm">
+                              {req.transaction_reference ?? "—"}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <div className="flex items-center justify-end gap-1">
+                                {req.status === "pending" && (
+                                  <>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
+                                      onClick={() =>
+                                        setApproveDialog({ open: true, cashout: req })
+                                      }
+                                    >
+                                      <CheckCircle2 className="w-4 h-4 mr-1" />
+                                      Approve
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                      onClick={() =>
+                                        setRejectDialog({ open: true, cashout: req })
+                                      }
+                                    >
+                                      <XCircle className="w-4 h-4 mr-1" />
+                                      Reject
+                                    </Button>
+                                  </>
+                                )}
+                                {req.status === "approved" && (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                                    onClick={() =>
+                                      setCompleteDialog({ open: true, cashout: req })
+                                    }
+                                  >
+                                    <Eye className="w-4 h-4 mr-1" />
+                                    Mark Complete
+                                  </Button>
+                                )}
+                                {(req.status === "completed" || req.status === "rejected") && (
+                                  <Button variant="ghost" size="sm" className="gap-1">
+                                    <Eye className="w-4 h-4" />
+                                    View
+                                  </Button>
+                                )}
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      )}
                     </TableBody>
                   </Table>
                 </div>
@@ -548,6 +650,151 @@ export default function DeliveryWalletDetailPage({ params }) {
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* Approve Dialog */}
+      <Dialog
+        open={approveDialog.open}
+        onOpenChange={(open) => setApproveDialog({ open, cashout: null })}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Approve Cashout Request</DialogTitle>
+          </DialogHeader>
+          <p className="text-slate-600">
+            Are you sure you want to approve{" "}
+            <span className="font-semibold">
+              {approveDialog.cashout && formatCurrency(approveDialog.cashout.amount)}
+            </span>{" "}
+            cashout for <span className="font-semibold">{partner.partnerName}</span>?
+          </p>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setApproveDialog({ open: false, cashout: null })}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleApprove}
+              disabled={approveMutation.isPending}
+              className="bg-emerald-600 hover:bg-emerald-700"
+            >
+              {approveMutation.isPending && (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              )}
+              Approve
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Complete Dialog */}
+      <Dialog
+        open={completeDialog.open}
+        onOpenChange={(open) => {
+          setCompleteDialog({ open, cashout: null });
+          setUtrNumber("");
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Mark Cashout as Completed</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-slate-600">
+              Enter the UTR / Transaction reference number for the{" "}
+              <span className="font-semibold">
+                {completeDialog.cashout && formatCurrency(completeDialog.cashout.amount)}
+              </span>{" "}
+              transfer.
+            </p>
+            <div className="space-y-2">
+              <Label htmlFor="utr">UTR / Reference Number</Label>
+              <Input
+                id="utr"
+                placeholder="e.g. UTR123456789"
+                value={utrNumber}
+                onChange={(e) => setUtrNumber(e.target.value)}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setCompleteDialog({ open: false, cashout: null });
+                setUtrNumber("");
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleComplete}
+              disabled={completeMutation.isPending || !utrNumber.trim()}
+            >
+              {completeMutation.isPending && (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              )}
+              Mark Complete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Reject Dialog */}
+      <Dialog
+        open={rejectDialog.open}
+        onOpenChange={(open) => {
+          setRejectDialog({ open, cashout: null });
+          setRejectionReason("");
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reject Cashout Request</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-slate-600">
+              Provide a reason for rejecting this cashout request of{" "}
+              <span className="font-semibold">
+                {rejectDialog.cashout && formatCurrency(rejectDialog.cashout.amount)}
+              </span>
+              .
+            </p>
+            <div className="space-y-2">
+              <Label htmlFor="reason">Rejection Reason</Label>
+              <Textarea
+                id="reason"
+                placeholder="Enter reason for rejection..."
+                value={rejectionReason}
+                onChange={(e) => setRejectionReason(e.target.value)}
+                rows={3}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setRejectDialog({ open: false, cashout: null });
+                setRejectionReason("");
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleReject}
+              disabled={rejectMutation.isPending || !rejectionReason.trim()}
+            >
+              {rejectMutation.isPending && (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              )}
+              Reject
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

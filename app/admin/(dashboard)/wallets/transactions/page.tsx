@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -20,162 +20,57 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Search, Download, ArrowLeft, Filter, Calendar } from "lucide-react";
+import { Search, Download, ArrowLeft, Filter, Loader2 } from "lucide-react";
 import Link from "next/link";
-
-// Mock Data
-const mockTransactions = [
-  {
-    id: "TXN001",
-    date: "2024-02-13T12:30:00",
-    userId: "V001",
-    userName: "Spice Garden Restaurant",
-    userType: "Vendor",
-    transactionType: "Credit",
-    amount: 1250.00,
-    orderId: "ORD12345",
-    balanceAfter: 45820.50,
-  },
-  {
-    id: "TXN002",
-    date: "2024-02-13T12:25:00",
-    userId: "D001",
-    userName: "Rajesh Kumar",
-    userType: "Delivery",
-    transactionType: "Credit",
-    amount: 85.00,
-    orderId: "ORD12345",
-    balanceAfter: 8920.00,
-  },
-  {
-    id: "TXN003",
-    date: "2024-02-13T11:45:00",
-    userId: "V002",
-    userName: "Cafe Aroma",
-    userType: "Vendor",
-    transactionType: "Credit",
-    amount: 890.50,
-    orderId: "ORD12346",
-    balanceAfter: 32100.75,
-  },
-  {
-    id: "TXN004",
-    date: "2024-02-13T11:40:00",
-    userId: "D002",
-    userName: "Priya Sharma",
-    userType: "Delivery",
-    transactionType: "Credit",
-    amount: 95.50,
-    orderId: "ORD12346",
-    balanceAfter: 12450.00,
-  },
-  {
-    id: "TXN005",
-    date: "2024-02-13T10:00:00",
-    userId: "V001",
-    userName: "Spice Garden Restaurant",
-    userType: "Vendor",
-    transactionType: "Debit",
-    amount: 25000.00,
-    orderId: null,
-    balanceAfter: 44570.50,
-  },
-  {
-    id: "TXN006",
-    date: "2024-02-13T09:15:00",
-    userId: "V003",
-    userName: "Pizza Paradise",
-    userType: "Vendor",
-    transactionType: "Credit",
-    amount: 1450.75,
-    orderId: "ORD12347",
-    balanceAfter: 28900.00,
-  },
-  {
-    id: "TXN007",
-    date: "2024-02-13T09:10:00",
-    userId: "D003",
-    userName: "Amit Patel",
-    userType: "Delivery",
-    transactionType: "Credit",
-    amount: 75.00,
-    orderId: "ORD12347",
-    balanceAfter: 5670.50,
-  },
-  {
-    id: "TXN008",
-    date: "2024-02-13T08:30:00",
-    userId: "D001",
-    userName: "Rajesh Kumar",
-    userType: "Delivery",
-    transactionType: "Debit",
-    amount: 5000.00,
-    orderId: null,
-    balanceAfter: 8835.00,
-  },
-  {
-    id: "TXN009",
-    date: "2024-02-12T18:30:00",
-    userId: "V002",
-    userName: "Cafe Aroma",
-    userType: "Vendor",
-    transactionType: "Credit",
-    amount: 2100.00,
-    orderId: "ORD12348",
-    balanceAfter: 31210.25,
-  },
-  {
-    id: "TXN010",
-    date: "2024-02-12T18:25:00",
-    userId: "D004",
-    userName: "Sneha Reddy",
-    userType: "Delivery",
-    transactionType: "Credit",
-    amount: 110.00,
-    orderId: "ORD12348",
-    balanceAfter: 15230.75,
-  },
-  {
-    id: "TXN011",
-    date: "2024-02-12T16:20:00",
-    userId: "V004",
-    userName: "Burger Hub",
-    userType: "Vendor",
-    transactionType: "Credit",
-    amount: 1180.25,
-    orderId: "ORD12349",
-    balanceAfter: 18450.25,
-  },
-  {
-    id: "TXN012",
-    date: "2024-02-12T15:45:00",
-    userId: "V005",
-    userName: "Sushi Central",
-    userType: "Vendor",
-    transactionType: "Debit",
-    amount: 30000.00,
-    orderId: null,
-    balanceAfter: 52300.00,
-  },
-];
+import { useGlobalWalletTransactions } from "@/hooks/wallet/useDeliveryWallet";
 
 export default function GlobalTransactionsPage() {
   const [searchTerm, setSearchTerm] = useState("");
-  const [userTypeFilter, setUserTypeFilter] = useState("all");
-  const [transactionTypeFilter, setTransactionTypeFilter] = useState("all");
+  const [userTypeFilter, setUserTypeFilter] = useState<"all" | "Vendor" | "Delivery">("all");
+  const [transactionTypeFilter, setTransactionTypeFilter] = useState<"all" | "Credit" | "Debit">("all");
   const [dateRange, setDateRange] = useState("all");
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
 
-  const formatCurrency = (amount) => {
-    return new Intl.NumberFormat("en-IN", {
+  // Compute dateFrom for the API query based on dateRange
+  const dateFrom = useMemo(() => {
+    const now = new Date();
+    switch (dateRange) {
+      case "today": {
+        const d = new Date(now);
+        d.setHours(0, 0, 0, 0);
+        return d.toISOString();
+      }
+      case "week": {
+        const d = new Date(now);
+        d.setDate(now.getDate() - 7);
+        return d.toISOString();
+      }
+      case "month": {
+        const d = new Date(now);
+        d.setMonth(now.getMonth() - 1);
+        return d.toISOString();
+      }
+      default:
+        return undefined;
+    }
+  }, [dateRange]);
+
+  const { data: allTransactions = [], isLoading, error } = useGlobalWalletTransactions({
+    userType: userTypeFilter === "all" ? undefined : userTypeFilter,
+    transactionType: transactionTypeFilter === "all" ? undefined : transactionTypeFilter,
+    dateFrom,
+  });
+
+  const formatCurrency = (amount: number) =>
+    new Intl.NumberFormat("en-IN", {
       style: "currency",
       currency: "INR",
       minimumFractionDigits: 2,
     }).format(amount);
-  };
 
-  const formatDate = (dateString) => {
+  const formatDate = (dateString: string | null) => {
+    if (!dateString) return "—";
     return new Date(dateString).toLocaleString("en-IN", {
       day: "2-digit",
       month: "short",
@@ -185,53 +80,18 @@ export default function GlobalTransactionsPage() {
     });
   };
 
-  const filterTransactions = (transactions) => {
-    let filtered = transactions;
+  // Client-side search filter
+  const filteredTransactions = useMemo(() => {
+    if (!searchTerm) return allTransactions;
+    const q = searchTerm.toLowerCase();
+    return allTransactions.filter(
+      (t) =>
+        t.userName.toLowerCase().includes(q) ||
+        t.userId.toLowerCase().includes(q) ||
+        (t.orderId && t.orderId.toLowerCase().includes(q))
+    );
+  }, [allTransactions, searchTerm]);
 
-    // Search filter
-    if (searchTerm) {
-      filtered = filtered.filter(
-        (t) =>
-          t.userName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          t.userId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          (t.orderId && t.orderId.toLowerCase().includes(searchTerm.toLowerCase()))
-      );
-    }
-
-    // User type filter
-    if (userTypeFilter !== "all") {
-      filtered = filtered.filter((t) => t.userType === userTypeFilter);
-    }
-
-    // Transaction type filter
-    if (transactionTypeFilter !== "all") {
-      filtered = filtered.filter((t) => t.transactionType === transactionTypeFilter);
-    }
-
-    // Date range filter
-    if (dateRange !== "all") {
-      const now = new Date();
-      const filterDate = new Date(now);
-      
-      switch (dateRange) {
-        case "today":
-          filterDate.setHours(0, 0, 0, 0);
-          break;
-        case "week":
-          filterDate.setDate(now.getDate() - 7);
-          break;
-        case "month":
-          filterDate.setMonth(now.getMonth() - 1);
-          break;
-      }
-      
-      filtered = filtered.filter((t) => new Date(t.date) >= filterDate);
-    }
-
-    return filtered;
-  };
-
-  const filteredTransactions = filterTransactions(mockTransactions);
   const totalPages = Math.ceil(filteredTransactions.length / itemsPerPage);
   const paginatedTransactions = filteredTransactions.slice(
     (currentPage - 1) * itemsPerPage,
@@ -245,6 +105,11 @@ export default function GlobalTransactionsPage() {
   const totalDebits = filteredTransactions
     .filter((t) => t.transactionType === "Debit")
     .reduce((sum, t) => sum + t.amount, 0);
+
+  const handleFilterChange = (setter: (v: any) => void) => (value: any) => {
+    setter(value);
+    setCurrentPage(1);
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 p-8">
@@ -281,9 +146,7 @@ export default function GlobalTransactionsPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold">
-                {filteredTransactions.length}
-              </div>
+              <div className="text-3xl font-bold">{filteredTransactions.length}</div>
             </CardContent>
           </Card>
 
@@ -294,9 +157,7 @@ export default function GlobalTransactionsPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold">
-                {formatCurrency(totalCredits)}
-              </div>
+              <div className="text-3xl font-bold">{formatCurrency(totalCredits)}</div>
             </CardContent>
           </Card>
 
@@ -307,9 +168,7 @@ export default function GlobalTransactionsPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold">
-                {formatCurrency(totalDebits)}
-              </div>
+              <div className="text-3xl font-bold">{formatCurrency(totalDebits)}</div>
             </CardContent>
           </Card>
 
@@ -349,13 +208,10 @@ export default function GlobalTransactionsPage() {
                   className="pl-10"
                 />
               </div>
-              
+
               <Select
                 value={userTypeFilter}
-                onValueChange={(value) => {
-                  setUserTypeFilter(value);
-                  setCurrentPage(1);
-                }}
+                onValueChange={handleFilterChange(setUserTypeFilter)}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="User Type" />
@@ -369,10 +225,7 @@ export default function GlobalTransactionsPage() {
 
               <Select
                 value={transactionTypeFilter}
-                onValueChange={(value) => {
-                  setTransactionTypeFilter(value);
-                  setCurrentPage(1);
-                }}
+                onValueChange={handleFilterChange(setTransactionTypeFilter)}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Transaction Type" />
@@ -386,10 +239,7 @@ export default function GlobalTransactionsPage() {
 
               <Select
                 value={dateRange}
-                onValueChange={(value) => {
-                  setDateRange(value);
-                  setCurrentPage(1);
-                }}
+                onValueChange={handleFilterChange(setDateRange)}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Date Range" />
@@ -411,141 +261,161 @@ export default function GlobalTransactionsPage() {
             <CardTitle>Transactions</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="rounded-md border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Date & Time</TableHead>
-                    <TableHead>User</TableHead>
-                    <TableHead>User Type</TableHead>
-                    <TableHead>Type</TableHead>
-                    <TableHead>Amount</TableHead>
-                    <TableHead>Order ID</TableHead>
-                    <TableHead>Balance After</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {paginatedTransactions.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={7} className="text-center text-slate-500 py-8">
-                        No transactions found
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    paginatedTransactions.map((txn) => (
-                      <TableRow key={txn.id}>
-                        <TableCell className="text-sm">
-                          {formatDate(txn.date)}
-                        </TableCell>
-                        <TableCell>
-                          <div className="font-medium">{txn.userName}</div>
-                          <div className="text-xs text-slate-500">{txn.userId}</div>
-                        </TableCell>
-                        <TableCell>
-                          <Badge
-                            variant={
-                              txn.userType === "Vendor" ? "default" : "secondary"
-                            }
-                          >
-                            {txn.userType}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <Badge
-                            className={
-                              txn.transactionType === "Credit"
-                                ? "bg-emerald-100 text-emerald-700"
-                                : "bg-red-100 text-red-700"
-                            }
-                          >
-                            {txn.transactionType}
-                          </Badge>
-                        </TableCell>
-                        <TableCell
-                          className={`font-semibold ${
-                            txn.transactionType === "Credit"
-                              ? "text-emerald-600"
-                              : "text-red-600"
-                          }`}
-                        >
-                          {txn.transactionType === "Credit" ? "+" : "-"}
-                          {formatCurrency(txn.amount)}
-                        </TableCell>
-                        <TableCell>
-                          {txn.orderId ? (
-                            <Link
-                              href={`/admin/orders/${txn.orderId}`}
-                              className="text-blue-600 hover:underline font-medium"
-                            >
-                              {txn.orderId}
-                            </Link>
-                          ) : (
-                            <span className="text-slate-400">-</span>
-                          )}
-                        </TableCell>
-                        <TableCell className="font-medium">
-                          {formatCurrency(txn.balanceAfter)}
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-
-            {/* Pagination */}
-            {totalPages > 1 && (
-              <div className="flex items-center justify-between mt-4">
-                <div className="text-sm text-slate-600">
-                  Showing {(currentPage - 1) * itemsPerPage + 1} to{" "}
-                  {Math.min(currentPage * itemsPerPage, filteredTransactions.length)} of{" "}
-                  {filteredTransactions.length} transactions
-                </div>
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                    disabled={currentPage === 1}
-                  >
-                    Previous
-                  </Button>
-                  <div className="flex items-center gap-1">
-                    {Array.from({ length: totalPages }, (_, i) => i + 1)
-                      .filter(
-                        (page) =>
-                          page === 1 ||
-                          page === totalPages ||
-                          Math.abs(page - currentPage) <= 1
-                      )
-                      .map((page, index, arr) => (
-                        <>
-                          {index > 0 && arr[index - 1] !== page - 1 && (
-                            <span key={`ellipsis-${page}`} className="px-2">
-                              ...
-                            </span>
-                          )}
-                          <Button
-                            key={page}
-                            variant={currentPage === page ? "default" : "outline"}
-                            size="sm"
-                            onClick={() => setCurrentPage(page)}
-                          >
-                            {page}
-                          </Button>
-                        </>
-                      ))}
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                    disabled={currentPage === totalPages}
-                  >
-                    Next
-                  </Button>
-                </div>
+            {error ? (
+              <div className="text-center py-8 text-red-500">
+                Failed to load transactions. Please try again.
               </div>
+            ) : (
+              <>
+                <div className="rounded-md border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Date & Time</TableHead>
+                        <TableHead>User</TableHead>
+                        <TableHead>User Type</TableHead>
+                        <TableHead>Type</TableHead>
+                        <TableHead>Amount</TableHead>
+                        <TableHead>Order ID</TableHead>
+                        <TableHead>Description</TableHead>
+                        <TableHead>Balance After</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {isLoading ? (
+                        <TableRow>
+                          <TableCell colSpan={8} className="text-center py-8">
+                            <Loader2 className="w-6 h-6 animate-spin mx-auto text-slate-400" />
+                          </TableCell>
+                        </TableRow>
+                      ) : paginatedTransactions.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={8} className="text-center text-slate-500 py-8">
+                            No transactions found
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        paginatedTransactions.map((txn) => (
+                          <TableRow key={txn.id}>
+                            <TableCell className="text-sm whitespace-nowrap">
+                              {formatDate(txn.date)}
+                            </TableCell>
+                            <TableCell>
+                              <div className="font-medium">{txn.userName}</div>
+                              <div className="text-xs text-slate-500">
+                                {txn.userId.slice(0, 8)}...
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <Badge
+                                variant={txn.userType === "Vendor" ? "default" : "secondary"}
+                              >
+                                {txn.userType}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              <Badge
+                                className={
+                                  txn.transactionType === "Credit"
+                                    ? "bg-emerald-100 text-emerald-700"
+                                    : "bg-red-100 text-red-700"
+                                }
+                              >
+                                {txn.transactionType}
+                              </Badge>
+                            </TableCell>
+                            <TableCell
+                              className={`font-semibold ${
+                                txn.transactionType === "Credit"
+                                  ? "text-emerald-600"
+                                  : "text-red-600"
+                              }`}
+                            >
+                              {txn.transactionType === "Credit" ? "+" : "-"}
+                              {formatCurrency(txn.amount)}
+                            </TableCell>
+                            <TableCell>
+                              {txn.orderId ? (
+                                <Link
+                                  href={`/admin/orders/${txn.orderId}`}
+                                  className="text-blue-600 hover:underline font-medium"
+                                >
+                                  {txn.orderId.slice(0, 8)}...
+                                </Link>
+                              ) : (
+                                <span className="text-slate-400">—</span>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-slate-600 max-w-[180px] truncate">
+                              {txn.description}
+                            </TableCell>
+                            <TableCell className="font-medium">
+                              {formatCurrency(txn.balanceAfter)}
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+
+                {/* Pagination */}
+                {totalPages > 1 && (
+                  <div className="flex items-center justify-between mt-4">
+                    <div className="text-sm text-slate-600">
+                      Showing {(currentPage - 1) * itemsPerPage + 1} to{" "}
+                      {Math.min(currentPage * itemsPerPage, filteredTransactions.length)} of{" "}
+                      {filteredTransactions.length} transactions
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                        disabled={currentPage === 1}
+                      >
+                        Previous
+                      </Button>
+                      <div className="flex items-center gap-1">
+                        {Array.from({ length: totalPages }, (_, i) => i + 1)
+                          .filter(
+                            (page) =>
+                              page === 1 ||
+                              page === totalPages ||
+                              Math.abs(page - currentPage) <= 1
+                          )
+                          .map((page, index, arr) => (
+                            <>
+                              {index > 0 && arr[index - 1] !== page - 1 && (
+                                <span key={`ellipsis-${page}`} className="px-2">
+                                  ...
+                                </span>
+                              )}
+                              <Button
+                                key={page}
+                                variant={currentPage === page ? "default" : "outline"}
+                                size="sm"
+                                onClick={() => setCurrentPage(page)}
+                              >
+                                {page}
+                              </Button>
+                            </>
+                          ))}
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() =>
+                          setCurrentPage((p) => Math.min(totalPages, p + 1))
+                        }
+                        disabled={currentPage === totalPages}
+                      >
+                        Next
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </>
             )}
           </CardContent>
         </Card>

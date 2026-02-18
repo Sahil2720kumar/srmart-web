@@ -6,7 +6,8 @@ import {
   CheckCircle, XCircle, Wifi, WifiOff, Loader2,
   Bike, TrendingUp, Users, Clock,
   Edit2,
-  AlertTriangle
+  AlertTriangle,
+  Landmark
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -35,7 +36,7 @@ import {
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
 const kycBadge: Record<string, string> = {
-  pending:  "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400 border-amber-200",
+  pending: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400 border-amber-200",
   approved: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400 border-emerald-200",
   rejected: "bg-rose-100 text-rose-800 dark:bg-rose-900/30 dark:text-rose-400 border-rose-200",
 };
@@ -76,9 +77,9 @@ function StatCard({
 // ─── page ─────────────────────────────────────────────────────────────────────
 
 export default function DeliveryPartnersPage() {
-  const [search, setSearch]         = useState("");
-  const [kycFilter, setKycFilter]   = useState("all");
-  const [onlineFilter, setOnline]   = useState("all");
+  const [search, setSearch] = useState("");
+  const [kycFilter, setKycFilter] = useState("all");
+  const [onlineFilter, setOnline] = useState("all");
 
   const { data: partners = [], isLoading, error } = useDeliveryBoys();
   const approveKyc = useUpdateDeliveryBoyKycStatus();
@@ -91,18 +92,18 @@ export default function DeliveryPartnersPage() {
         p.first_name.toLowerCase().includes(q) ||
         p.last_name.toLowerCase().includes(q) ||
         (p.vehicle_number ?? "").toLowerCase().includes(q);
-      const matchKyc    = kycFilter === "all" || p.kyc_status === kycFilter;
+      const matchKyc = kycFilter === "all" || p.kyc_status === kycFilter;
       const matchOnline =
         onlineFilter === "all" ||
-        (onlineFilter === "online"  &&  p.is_online) ||
+        (onlineFilter === "online" && p.is_online) ||
         (onlineFilter === "offline" && !p.is_online);
       return matchSearch && matchKyc && matchOnline;
     });
   }, [partners, search, kycFilter, onlineFilter]);
 
   // ── stats ────────────────────────────────────────────────────────────────
-  const totalOnline   = partners.filter((p) => p.is_online).length;
-  const totalPending  = partners.filter((p) => p.kyc_status === "pending").length;
+  const totalOnline = partners.filter((p) => p.is_online).length;
+  const totalPending = partners.filter((p) => p.kyc_status === "pending").length;
   const totalApproved = partners.filter((p) => p.kyc_status === "approved").length;
 
   const handleApproveKyc = (userId: string, name: string) => {
@@ -110,7 +111,7 @@ export default function DeliveryPartnersPage() {
       { userId, status: "approved" },
       {
         onSuccess: () => toast.success(`KYC approved for ${name}`),
-        onError:   () => toast.error("Failed to approve KYC"),
+        onError: () => toast.error("Failed to approve KYC"),
       }
     );
   };
@@ -144,7 +145,7 @@ export default function DeliveryPartnersPage() {
         </div>
         <Link href="/admin/delivery/verification">
           <Button className="bg-amber-400" >
-            <AlertTriangle  className="mr-2 h-4 w-4" />
+            <AlertTriangle className="mr-2 h-4 w-4" />
             View All Pending Kyc Verification
           </Button>
         </Link>
@@ -152,10 +153,10 @@ export default function DeliveryPartnersPage() {
 
       {/* ── stats ──────────────────────────────────────────────────────── */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard icon={Users}       label="Total Partners" value={partners.length}  sub="All registered"       color="bg-blue-100 text-blue-600 dark:bg-blue-900/30" />
-        <StatCard icon={Wifi}        label="Online Now"     value={totalOnline}       sub="Currently active"     color="bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30" />
-        <StatCard icon={Clock}       label="Pending KYC"   value={totalPending}      sub="Awaiting review"      color="bg-amber-100 text-amber-600 dark:bg-amber-900/30" />
-        <StatCard icon={TrendingUp}  label="Verified"      value={totalApproved}     sub="Approved partners"    color="bg-violet-100 text-violet-600 dark:bg-violet-900/30" />
+        <StatCard icon={Users} label="Total Partners" value={partners.length} sub="All registered" color="bg-blue-100 text-blue-600 dark:bg-blue-900/30" />
+        <StatCard icon={Wifi} label="Online Now" value={totalOnline} sub="Currently active" color="bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30" />
+        <StatCard icon={Clock} label="Pending KYC" value={totalPending} sub="Awaiting review" color="bg-amber-100 text-amber-600 dark:bg-amber-900/30" />
+        <StatCard icon={TrendingUp} label="Verified" value={totalApproved} sub="Approved partners" color="bg-violet-100 text-violet-600 dark:bg-violet-900/30" />
       </div>
 
       {/* ── filters ────────────────────────────────────────────────────── */}
@@ -237,9 +238,8 @@ export default function DeliveryPartnersPage() {
                               </AvatarFallback>
                             </Avatar>
                             <span
-                              className={`absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-background ${
-                                p.is_online ? "bg-emerald-500" : "bg-zinc-400"
-                              }`}
+                              className={`absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-background ${p.is_online ? "bg-emerald-500" : "bg-zinc-400"
+                                }`}
                             />
                           </div>
                           <div>
@@ -285,11 +285,10 @@ export default function DeliveryPartnersPage() {
                         <div className="flex flex-col gap-1">
                           <Badge
                             variant="outline"
-                            className={`w-fit text-xs ${
-                              p.is_online
+                            className={`w-fit text-xs ${p.is_online
                                 ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400"
                                 : "border-zinc-200 bg-zinc-50 text-zinc-600 dark:bg-zinc-900/20 dark:text-zinc-400"
-                            }`}
+                              }`}
                           >
                             {p.is_online ? (
                               <><Wifi className="mr-1 h-3 w-3" />Online</>
@@ -300,11 +299,10 @@ export default function DeliveryPartnersPage() {
                           {p.is_available != null && (
                             <Badge
                               variant="outline"
-                              className={`w-fit text-xs ${
-                                p.is_available
+                              className={`w-fit text-xs ${p.is_available
                                   ? "border-blue-200 bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400"
                                   : "border-orange-200 bg-orange-50 text-orange-700 dark:bg-orange-900/20 dark:text-orange-400"
-                              }`}
+                                }`}
                             >
                               {p.is_available ? "Available" : "Busy"}
                             </Badge>
@@ -339,6 +337,11 @@ export default function DeliveryPartnersPage() {
                               <Link href={`/admin/delivery/${p.user_id}`}>
                                 <Eye className="mr-2 h-4 w-4" />
                                 View Profile
+                              </Link>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem asChild>
+                              <Link href={`/admin/delivery/${p.user_id}/bank-details`}>
+                                <Landmark className="mr-2 h-4 w-4" /> Review Bank Details
                               </Link>
                             </DropdownMenuItem>
                             <DropdownMenuItem asChild>

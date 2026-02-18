@@ -128,7 +128,7 @@ export default function VendorProfilePage() {
 
   // Wallet — fetches from wallets table / get_wallet_details RPC
   const { data: wallet, isLoading: walletLoading } = useVendorWallet(vendorId);
-
+ 
   // ── Mutations ────────────────────────────
   const suspendVendor      = useSuspendVendor();
   const unsuspendVendor    = useUnsuspendVendor();

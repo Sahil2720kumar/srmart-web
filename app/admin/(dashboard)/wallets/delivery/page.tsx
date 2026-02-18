@@ -20,91 +20,22 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Search, Eye, CheckCircle2, AlertCircle, Clock, ArrowLeft, Star, Bike } from "lucide-react";
+import { Search, Eye, CheckCircle2, AlertCircle, Clock, ArrowLeft, Star, Bike, Loader2 } from "lucide-react";
 import Link from "next/link";
-
-// Mock Data
-const mockDeliveryWallets = [
-  {
-    id: "D001",
-    partnerName: "Rajesh Kumar",
-    availableBalance: 8920.00,
-    pendingBalance: 1250.00,
-    lifetimeEarnings: 89234.50,
-    totalDeliveries: 1234,
-    rating: 4.8,
-    bankStatus: "Verified",
-    isOnline: true,
-    lastUpdated: "2024-02-13T12:30:00",
-  },
-  {
-    id: "D002",
-    partnerName: "Priya Sharma",
-    availableBalance: 12450.00,
-    pendingBalance: 890.50,
-    lifetimeEarnings: 67890.30,
-    totalDeliveries: 892,
-    rating: 4.9,
-    bankStatus: "Verified",
-    isOnline: true,
-    lastUpdated: "2024-02-13T12:15:00",
-  },
-  {
-    id: "D003",
-    partnerName: "Amit Patel",
-    availableBalance: 5670.50,
-    pendingBalance: 650.00,
-    lifetimeEarnings: 45670.80,
-    totalDeliveries: 567,
-    rating: 4.6,
-    bankStatus: "Pending",
-    isOnline: false,
-    lastUpdated: "2024-02-13T11:45:00",
-  },
-  {
-    id: "D004",
-    partnerName: "Sneha Reddy",
-    availableBalance: 15230.75,
-    pendingBalance: 2340.00,
-    lifetimeEarnings: 123456.90,
-    totalDeliveries: 1567,
-    rating: 4.9,
-    bankStatus: "Verified",
-    isOnline: true,
-    lastUpdated: "2024-02-13T12:28:00",
-  },
-  {
-    id: "D005",
-    partnerName: "Vikram Singh",
-    availableBalance: 6780.25,
-    pendingBalance: 450.75,
-    lifetimeEarnings: 78901.40,
-    totalDeliveries: 923,
-    rating: 4.7,
-    bankStatus: "Verified",
-    isOnline: false,
-    lastUpdated: "2024-02-13T10:20:00",
-  },
-  {
-    id: "D006",
-    partnerName: "Anjali Gupta",
-    availableBalance: 9340.00,
-    pendingBalance: 1120.00,
-    lifetimeEarnings: 56789.20,
-    totalDeliveries: 678,
-    rating: 4.8,
-    bankStatus: "Rejected",
-    isOnline: false,
-    lastUpdated: "2024-02-12T18:00:00",
-  },
-];
+import {
+  useAdminDeliveryWallets,
+  useAdminDeliveryWalletsSummary,
+} from "@/hooks";
 
 export default function DeliveryWalletListPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [bankStatusFilter, setBankStatusFilter] = useState("all");
 
-  const formatCurrency = (amount) => {
+  const { data: partners = [], isLoading, error } = useAdminDeliveryWallets();
+  const { data: summary } = useAdminDeliveryWalletsSummary();
+
+  const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("en-IN", {
       style: "currency",
       currency: "INR",
@@ -112,44 +43,31 @@ export default function DeliveryWalletListPage() {
     }).format(amount);
   };
 
-  const formatDate = (dateString) => {
+  const formatDate = (dateString: string | null) => {
+    if (!dateString) return "—";
     const date = new Date(dateString);
     const now = new Date();
-    const diff = Math.floor((now - date) / 1000 / 60);
-
+    const diff = Math.floor((now.getTime() - date.getTime()) / 1000 / 60);
     if (diff < 60) return `${diff} mins ago`;
     if (diff < 1440) return `${Math.floor(diff / 60)} hours ago`;
     return date.toLocaleDateString();
   };
 
-  const filterPartners = (partners) => {
-    let filtered = partners;
-
-    // Search filter
-    if (searchTerm) {
-      filtered = filtered.filter(
-        (p) =>
-          p.partnerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          p.id.toLowerCase().includes(searchTerm.toLowerCase())
-      );
+  const filteredPartners = partners.filter((p) => {
+    if (
+      searchTerm &&
+      !p.partnerName.toLowerCase().includes(searchTerm.toLowerCase()) &&
+      !p.userId.toLowerCase().includes(searchTerm.toLowerCase())
+    ) {
+      return false;
     }
+    if (statusFilter === "online" && !p.isOnline) return false;
+    if (statusFilter === "offline" && p.isOnline) return false;
+    if (bankStatusFilter !== "all" && p.bankStatus !== bankStatusFilter) return false;
+    return true;
+  });
 
-    // Online/Offline filter
-    if (statusFilter === "online") {
-      filtered = filtered.filter((p) => p.isOnline);
-    } else if (statusFilter === "offline") {
-      filtered = filtered.filter((p) => !p.isOnline);
-    }
-
-    // Bank status filter
-    if (bankStatusFilter !== "all") {
-      filtered = filtered.filter((p) => p.bankStatus === bankStatusFilter);
-    }
-
-    return filtered;
-  };
-
-  const getBankStatusBadge = (status) => {
+  const getBankStatusBadge = (status: string) => {
     switch (status) {
       case "Verified":
         return (
@@ -173,11 +91,11 @@ export default function DeliveryWalletListPage() {
           </Badge>
         );
       default:
-        return null;
+        return (
+          <Badge variant="secondary">Not Added</Badge>
+        );
     }
   };
-
-  const filteredPartners = filterPartners(mockDeliveryWallets);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-purple-50 to-pink-50 p-8">
@@ -209,7 +127,9 @@ export default function DeliveryWalletListPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold">{mockDeliveryWallets.length}</div>
+              <div className="text-3xl font-bold">
+                {summary?.totalPartners ?? partners.length}
+              </div>
             </CardContent>
           </Card>
 
@@ -221,7 +141,7 @@ export default function DeliveryWalletListPage() {
             </CardHeader>
             <CardContent>
               <div className="text-3xl font-bold">
-                {mockDeliveryWallets.filter((p) => p.isOnline).length}
+                {summary?.onlinePartners ?? partners.filter((p) => p.isOnline).length}
               </div>
             </CardContent>
           </Card>
@@ -234,7 +154,7 @@ export default function DeliveryWalletListPage() {
             </CardHeader>
             <CardContent>
               <div className="text-3xl font-bold">
-                {mockDeliveryWallets.filter((p) => p.bankStatus === "Verified").length}
+                {summary?.verifiedBanks ?? partners.filter((p) => p.bankStatus === "Verified").length}
               </div>
             </CardContent>
           </Card>
@@ -247,10 +167,10 @@ export default function DeliveryWalletListPage() {
             </CardHeader>
             <CardContent>
               <div className="text-3xl font-bold flex items-center gap-2">
-                {(
-                  mockDeliveryWallets.reduce((sum, p) => sum + p.rating, 0) /
-                  mockDeliveryWallets.length
-                ).toFixed(1)}
+                {summary?.avgRating ??
+                  (partners.length > 0
+                    ? (partners.reduce((s, p) => s + p.rating, 0) / partners.length).toFixed(1)
+                    : "—")}
                 <Star className="w-6 h-6 fill-yellow-300 text-yellow-300" />
               </div>
             </CardContent>
@@ -267,9 +187,9 @@ export default function DeliveryWalletListPage() {
               <div>
                 <h3 className="font-semibold text-blue-900">Delivery Partner Payout Flow</h3>
                 <p className="text-sm text-blue-700 mt-1">
-                  <strong>Step 1:</strong> Earnings move to Available Balance after delivery completion →
-                  <strong>Step 2:</strong> Partner requests cashout (moves to Pending) →
-                  <strong>Step 3:</strong> Admin confirms the request →
+                  <strong>Step 1:</strong> Earnings move to Available Balance after delivery completion →{" "}
+                  <strong>Step 2:</strong> Partner requests cashout (moves to Pending) →{" "}
+                  <strong>Step 3:</strong> Admin confirms the request →{" "}
                   <strong>Step 4:</strong> Amount transferred to verified bank account
                 </p>
               </div>
@@ -309,6 +229,7 @@ export default function DeliveryWalletListPage() {
                   <SelectItem value="Verified">Verified</SelectItem>
                   <SelectItem value="Pending">Pending</SelectItem>
                   <SelectItem value="Rejected">Rejected</SelectItem>
+                  <SelectItem value="Not Added">Not Added</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -321,86 +242,98 @@ export default function DeliveryWalletListPage() {
             <CardTitle>Delivery Partners</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="rounded-md border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Partner Name</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Available Balance</TableHead>
-                    <TableHead>Pending Cashout</TableHead>
-                    <TableHead>Lifetime Earnings</TableHead>
-                    <TableHead>Total Deliveries</TableHead>
-                    <TableHead>Rating</TableHead>
-                    <TableHead>Bank Status</TableHead>
-                    <TableHead>Last Updated</TableHead>
-                    <TableHead className="text-right">Action</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredPartners.length === 0 ? (
+            {error ? (
+              <div className="text-center py-8 text-red-500">
+                Failed to load partners. Please try again.
+              </div>
+            ) : (
+              <div className="rounded-md border">
+                <Table>
+                  <TableHeader>
                     <TableRow>
-                      <TableCell colSpan={10} className="text-center text-slate-500 py-8">
-                        No delivery partners found
-                      </TableCell>
+                      <TableHead>Partner Name</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Available Balance</TableHead>
+                      <TableHead>Pending Cashout</TableHead>
+                      <TableHead>Lifetime Earnings</TableHead>
+                      <TableHead>Total Deliveries</TableHead>
+                      <TableHead>Rating</TableHead>
+                      <TableHead>Bank Status</TableHead>
+                      <TableHead>Last Updated</TableHead>
+                      <TableHead className="text-right">Action</TableHead>
                     </TableRow>
-                  ) : (
-                    filteredPartners.map((partner) => (
-                      <TableRow key={partner.id}>
-                        <TableCell className="font-medium">
-                          {partner.partnerName}
-                          <div className="text-xs text-slate-500">{partner.id}</div>
-                        </TableCell>
-                        <TableCell>
-                          {partner.isOnline ? (
-                            <Badge className="bg-emerald-100 text-emerald-700">
-                              Online
-                            </Badge>
-                          ) : (
-                            <Badge variant="secondary">Offline</Badge>
-                          )}
-                        </TableCell>
-                        <TableCell className="font-semibold text-emerald-600">
-                          {formatCurrency(partner.availableBalance)}
-                        </TableCell>
-                        <TableCell className="text-amber-600">
-                          {formatCurrency(partner.pendingBalance)}
-                          {partner.pendingBalance > 1000 && (
-                            <Badge variant="outline" className="ml-2 text-xs">
-                              Awaiting Admin
-                            </Badge>
-                          )}
-                        </TableCell>
-                        <TableCell className="font-semibold">
-                          {formatCurrency(partner.lifetimeEarnings)}
-                        </TableCell>
-                        <TableCell className="text-slate-600">
-                          {partner.totalDeliveries.toLocaleString()}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-1">
-                            <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
-                            <span className="font-medium">{partner.rating}</span>
-                          </div>
-                        </TableCell>
-                        <TableCell>{getBankStatusBadge(partner.bankStatus)}</TableCell>
-                        <TableCell className="text-slate-500 text-sm">
-                          {formatDate(partner.lastUpdated)}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Link href={`/admin/wallets/delivery/${partner.id}`}>
-                            <Button variant="ghost" size="sm" className="gap-2">
-                              <Eye className="w-4 h-4" />
-                              View Wallet
-                            </Button>
-                          </Link>
+                  </TableHeader>
+                  <TableBody>
+                    {isLoading ? (
+                      <TableRow>
+                        <TableCell colSpan={10} className="text-center py-8">
+                          <Loader2 className="w-6 h-6 animate-spin mx-auto text-slate-400" />
                         </TableCell>
                       </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
-            </div>
+                    ) : filteredPartners.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={10} className="text-center text-slate-500 py-8">
+                          No delivery partners found
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      filteredPartners.map((partner) => (
+                        <TableRow key={partner.walletId}>
+                          <TableCell className="font-medium">
+                            {partner.partnerName}
+                            <div className="text-xs text-slate-500">{partner.userId.slice(0, 8)}...</div>
+                          </TableCell>
+                          <TableCell>
+                            {partner.isOnline ? (
+                              <Badge className="bg-emerald-100 text-emerald-700">Online</Badge>
+                            ) : (
+                              <Badge variant="secondary">Offline</Badge>
+                            )}
+                          </TableCell>
+                          <TableCell className="font-semibold text-emerald-600">
+                            {formatCurrency(partner.availableBalance)}
+                          </TableCell>
+                          <TableCell className="text-amber-600">
+                            {formatCurrency(partner.pendingBalance)}
+                            {partner.pendingBalance > 1000 && (
+                              <Badge variant="outline" className="ml-2 text-xs">
+                                Awaiting Admin
+                              </Badge>
+                            )}
+                          </TableCell>
+                          <TableCell className="font-semibold">
+                            {formatCurrency(partner.lifetimeEarnings)}
+                          </TableCell>
+                          <TableCell className="text-slate-600">
+                            {partner.totalDeliveries.toLocaleString()}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-1">
+                              <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
+                              <span className="font-medium">
+                                {partner.rating ? partner.rating.toFixed(1) : "—"}
+                              </span>
+                            </div>
+                          </TableCell>
+                          <TableCell>{getBankStatusBadge(partner.bankStatus)}</TableCell>
+                          <TableCell className="text-slate-500 text-sm">
+                            {formatDate(partner.lastUpdated)}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Link href={`/admin/wallets/delivery/${partner.userId}`}>
+                              <Button variant="ghost" size="sm" className="gap-2">
+                                <Eye className="w-4 h-4" />
+                                View Wallet
+                              </Button>
+                            </Link>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

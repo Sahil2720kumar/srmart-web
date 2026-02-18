@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Search, Plus, MoreVertical, Eye, FileText, Ban, CheckCircle, Loader2, Edit2, EyeIcon, AlertTriangle } from "lucide-react";
+import { Search, Plus, MoreVertical, Eye, FileText, Ban, CheckCircle, Loader2, Edit2, EyeIcon, AlertTriangle, Landmark } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -261,6 +261,11 @@ export default function VendorsPage() {
                                 <DropdownMenuItem asChild>
                                   <Link href={`/admin/vendors/${vendor.user_id}`}>
                                     <Eye className="mr-2 h-4 w-4" /> View Profile
+                                  </Link>
+                                </DropdownMenuItem>
+                                <DropdownMenuItem asChild>
+                                  <Link href={`/admin/vendors/${vendor.user_id}/bank-details`}>
+                                    <Landmark className="mr-2 h-4 w-4" /> Review Bank Details
                                   </Link>
                                 </DropdownMenuItem>
                                 <DropdownMenuItem asChild>
