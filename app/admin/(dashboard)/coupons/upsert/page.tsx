@@ -26,78 +26,18 @@ import {
   useCoupon,
   useCreateCoupon,
   useUpdateCoupon,
+  useCategories,
+  useSubCategories,
+  useVendors,
+  useProducts,
   type CouponInsert,
   type ApplicableTo,
+  useSubCategoriesByCategory,
 } from '@/hooks';
 
 const supabase = createClient();
 
-// ─────────────────────────────────────────────
-// Scope item loaders
-// ─────────────────────────────────────────────
 
-function useCategories() {
-  return useQuery({
-    queryKey: ['categories', 'active'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('categories')
-        .select('id, name')
-        .eq('is_active', true)
-        .order('name');
-      if (error) throw error;
-      return data as { id: string; name: string }[];
-    },
-  });
-}
-
-function useSubCategories(categoryId: string) {
-  return useQuery({
-    queryKey: ['sub_categories', categoryId],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('sub_categories')
-        .select('id, name')
-        .eq('category_id', categoryId)
-        .eq('is_active', true)
-        .order('name');
-      if (error) throw error;
-      return data as { id: string; name: string }[];
-    },
-    enabled: !!categoryId,
-  });
-}
-
-function useVendors() {
-  return useQuery({
-    queryKey: ['vendors', 'verified'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('vendors')
-        .select('user_id, store_name')
-        .eq('is_verified', true)
-        .order('store_name');
-      if (error) throw error;
-      return data as { user_id: string; store_name: string }[];
-    },
-  });
-}
-
-function useProducts() {
-  return useQuery({
-    queryKey: ['products', 'available'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('products')
-        .select('id, name')
-        .eq('is_available', true)
-        .order('name')
-        .limit(200);
-      if (error) throw error;
-      return data as { id: string; name: string }[];
-    },
-  });
-}
 
 // ─────────────────────────────────────────────
 // Form state
@@ -201,7 +141,7 @@ export default function AddEditCouponPage() {
 
   // ── Scope data loaders ─────────────────────────────────────────────────────
   const { data: categories   = [] } = useCategories();
-  const { data: subCategories = [] } = useSubCategories(formData._parent_category_id);
+  const { data: subCategories = [] } = useSubCategoriesByCategory(formData._parent_category_id);
   const { data: vendors       = [] } = useVendors();
   const { data: products      = [] } = useProducts();
 

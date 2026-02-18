@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { Search, FileText, CheckCircle, ChevronDown } from "lucide-react";
+import { useState, useMemo } from "react";
+import { Search, FileText, CheckCircle, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -22,6 +22,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -33,250 +34,264 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import Link from "next/link";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { createClient } from "@/lib/supabase/client";
+import { useApproveAllKycDocuments, useUpdateVendorKycStatus } from "@/hooks";
 
-type KycStatus = "pending" | "partially_approved" | "approved" | "rejected";
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+type KycStatus = "pending" | "partially_approved" | "approved" | "verified" | "rejected";
 
 interface VendorInQueue {
+  /** vendors.user_id */
   id: string;
-  name: string;
-  business_name: string;
+  store_name: string;
   email: string;
+  kyc_status: KycStatus;
+  is_verified: boolean;
+  created_at: string | null;
+  // aggregated from kyc_documents
   total_documents: number;
   submitted_documents: number;
   pending_documents: number;
+  approved_documents: number;
   rejected_documents: number;
-  kyc_status: KycStatus;
-  submitted_date: string;
 }
 
-// Mock data
-const mockVendors: VendorInQueue[] = [
-  {
-    id: "VEN-003",
-    name: "Amit Patel",
-    business_name: "Dairy Plus",
-    email: "amit@dairyplus.com",
-    total_documents: 5,
-    submitted_documents: 5,
-    pending_documents: 3,
-    rejected_documents: 0,
-    kyc_status: "pending",
-    submitted_date: "2024-02-01T11:45:00Z",
-  },
-  {
-    id: "VEN-007",
-    name: "Rahul Verma",
-    business_name: "Premium Meats",
-    email: "rahul@meatshop.com",
-    total_documents: 5,
-    submitted_documents: 5,
-    pending_documents: 2,
-    rejected_documents: 0,
-    kyc_status: "partially_approved",
-    submitted_date: "2024-01-18T12:00:00Z",
-  },
-  {
-    id: "VEN-011",
-    name: "Karan Malhotra",
-    business_name: "Beverages Hub",
-    email: "karan@beverageshub.com",
-    total_documents: 5,
-    submitted_documents: 4,
-    pending_documents: 4,
-    rejected_documents: 0,
-    kyc_status: "pending",
-    submitted_date: "2024-02-07T13:20:00Z",
-  },
-  {
-    id: "VEN-013",
-    name: "Neha Kapoor",
-    business_name: "Healthy Bites",
-    email: "neha@healthybites.com",
-    total_documents: 5,
-    submitted_documents: 5,
-    pending_documents: 0,
-    rejected_documents: 0,
-    kyc_status: "approved",
-    submitted_date: "2024-01-25T09:30:00Z",
-  },
-  {
-    id: "VEN-014",
-    name: "Arjun Shah",
-    business_name: "Tea & Coffee Co",
-    email: "arjun@teacoffee.com",
-    total_documents: 5,
-    submitted_documents: 5,
-    pending_documents: 1,
-    rejected_documents: 2,
-    kyc_status: "rejected",
-    submitted_date: "2024-02-05T14:15:00Z",
-  },
-  {
-    id: "VEN-015",
-    name: "Divya Menon",
-    business_name: "Sweet Delights",
-    email: "divya@sweetdelights.com",
-    total_documents: 5,
-    submitted_documents: 5,
-    pending_documents: 5,
-    rejected_documents: 0,
-    kyc_status: "pending",
-    submitted_date: "2024-02-10T10:00:00Z",
-  },
-  {
-    id: "VEN-016",
-    name: "Suresh Kumar",
-    business_name: "Spice Garden",
-    email: "suresh@spicegarden.com",
-    total_documents: 5,
-    submitted_documents: 5,
-    pending_documents: 1,
-    rejected_documents: 0,
-    kyc_status: "partially_approved",
-    submitted_date: "2024-02-08T11:30:00Z",
-  },
-  {
-    id: "VEN-017",
-    name: "Lakshmi Iyer",
-    business_name: "Fresh Catch",
-    email: "lakshmi@freshcatch.com",
-    total_documents: 5,
-    submitted_documents: 3,
-    pending_documents: 3,
-    rejected_documents: 0,
-    kyc_status: "pending",
-    submitted_date: "2024-02-09T15:45:00Z",
-  },
-  {
-    id: "VEN-018",
-    name: "Ravi Shankar",
-    business_name: "Organic Farm",
-    email: "ravi@organicfarm.com",
-    total_documents: 5,
-    submitted_documents: 5,
-    pending_documents: 0,
-    rejected_documents: 1,
-    kyc_status: "rejected",
-    submitted_date: "2024-02-02T08:20:00Z",
-  },
-  {
-    id: "VEN-019",
-    name: "Kavita Singh",
-    business_name: "Nuts & Dry Fruits",
-    email: "kavita@nutsdryfuits.com",
-    total_documents: 5,
-    submitted_documents: 5,
-    pending_documents: 2,
-    rejected_documents: 0,
-    kyc_status: "partially_approved",
-    submitted_date: "2024-02-06T12:10:00Z",
-  },
-];
+// ─── Supabase client ──────────────────────────────────────────────────────────
 
-const kycStatusColors = {
-  pending: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400",
-  partially_approved: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400",
-  approved: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
-  rejected: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
+const supabase = createClient();
+
+// ─── Data hook ────────────────────────────────────────────────────────────────
+
+/**
+ * Fetches all vendors joined with their kyc_documents aggregate counts.
+ * We pull vendors + kyc_documents in two queries then merge client-side
+ * to avoid a complex RPC.
+ */
+function useKycQueue() {
+  return useQuery<VendorInQueue[]>({
+    queryKey: ["kyc_queue"],
+    queryFn: async () => {
+      // 1. All vendors (with user email)
+      const { data: vendors, error: vendorsError } = await supabase
+        .from("vendors")
+        .select("user_id, store_name, kyc_status, is_verified, created_at, users(email)")
+        .order("created_at", { ascending: false });
+
+      if (vendorsError) throw vendorsError;
+
+      // 2. All kyc_documents grouped by user_id + status
+      const { data: docs, error: docsError } = await supabase
+        .from("kyc_documents")
+        .select("user_id, status")
+        .eq("user_type", "vendor");
+
+      if (docsError) throw docsError;
+
+      // 3. Build a map: user_id → { total, pending, approved, rejected }
+      type DocCounts = {
+        total: number;
+        pending: number;
+        approved: number;
+        rejected: number;
+      };
+
+      const docMap = new Map<string, DocCounts>();
+
+      for (const doc of docs ?? []) {
+        const uid = doc.user_id;
+        if (!docMap.has(uid)) {
+          docMap.set(uid, { total: 0, pending: 0, approved: 0, rejected: 0 });
+        }
+        const counts = docMap.get(uid)!;
+        counts.total += 1;
+        const s = doc.status ?? "pending";
+        if (s === "pending")           counts.pending  += 1;
+        else if (s === "approved")     counts.approved += 1;
+        else if (s === "rejected")     counts.rejected += 1;
+      }
+
+      // 4. Merge
+      return (vendors ?? []).map((v) => {
+        const counts = docMap.get(v.user_id) ?? {
+          total: 0, pending: 0, approved: 0, rejected: 0,
+        };
+        return {
+          id:                   v.user_id,
+          store_name:           v.store_name,
+          email:                (v.users as any)?.email ?? "—",
+          kyc_status:           (v.kyc_status ?? "pending") as KycStatus,
+          is_verified:          v.is_verified ?? false,
+          created_at:           v.created_at,
+          total_documents:      counts.total,
+          submitted_documents:  counts.total,   // every row in kyc_documents is "submitted"
+          pending_documents:    counts.pending,
+          approved_documents:   counts.approved,
+          rejected_documents:   counts.rejected,
+        } satisfies VendorInQueue;
+      });
+    },
+    staleTime: 30_000,
+  });
+}
+
+// ─── Colour helpers ───────────────────────────────────────────────────────────
+
+const kycStatusColors: Record<string, string> = {
+  pending:            "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400",
+  partially_approved: "bg-blue-100   text-blue-800   dark:bg-blue-900/30   dark:text-blue-400",
+  approved:           "bg-green-100  text-green-800  dark:bg-green-900/30  dark:text-green-400",
+  verified:           "bg-green-100  text-green-800  dark:bg-green-900/30  dark:text-green-400",
+  rejected:           "bg-red-100    text-red-800    dark:bg-red-900/30    dark:text-red-400",
 };
 
-export default function VendorVerificationPage() {
-  const [vendors, setVendors] = useState(mockVendors);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [sortBy, setSortBy] = useState<string>("newest");
-  const [selectedVendors, setSelectedVendors] = useState<string[]>([]);
-  const [showApproveDialog, setShowApproveDialog] = useState(false);
-  const [showBulkApproveDialog, setShowBulkApproveDialog] = useState(false);
-  const [approveVendorId, setApproveVendorId] = useState<string | null>(null);
+function kycLabel(status: string) {
+  return status.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
 
-  const toggleVendorSelection = (vendorId: string) => {
-    setSelectedVendors(prev =>
-      prev.includes(vendorId)
-        ? prev.filter(id => id !== vendorId)
-        : [...prev, vendorId]
+// ─── Derived status helper ────────────────────────────────────────────────────
+
+/**
+ * Derive a display status from live document counts so the badge
+ * reflects reality even if the DB kyc_status lags behind.
+ */
+function deriveStatus(v: VendorInQueue): KycStatus {
+  if (v.rejected_documents > 0)                                           return "rejected";
+  if (v.pending_documents === 0 && v.approved_documents === v.total_documents && v.total_documents > 0)
+                                                                          return "approved";
+  if (v.approved_documents > 0 && v.pending_documents > 0)               return "partially_approved";
+  return v.kyc_status;
+}
+
+// ─── Skeleton row ─────────────────────────────────────────────────────────────
+
+function SkeletonRow() {
+  return (
+    <TableRow>
+      {Array.from({ length: 9 }).map((_, i) => (
+        <TableCell key={i}><Skeleton className="h-5 w-full" /></TableCell>
+      ))}
+    </TableRow>
+  );
+}
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
+
+export default function VendorVerificationPage() {
+  const queryClient = useQueryClient();
+
+  const { data: vendors = [], isLoading, error } = useKycQueue();
+
+  // Mutations
+  const approveAllDocs  = useApproveAllKycDocuments();
+  const updateKycStatus = useUpdateVendorKycStatus();
+
+  // UI state
+  const [searchQuery, setSearchQuery]               = useState("");
+  const [statusFilter, setStatusFilter]             = useState<string>("all");
+  const [sortBy, setSortBy]                         = useState<string>("newest");
+  const [selectedVendors, setSelectedVendors]       = useState<string[]>([]);
+  const [showApproveDialog, setShowApproveDialog]   = useState(false);
+  const [showBulkDialog, setShowBulkDialog]         = useState(false);
+  const [approveVendorId, setApproveVendorId]       = useState<string | null>(null);
+  const [approvingId, setApprovingId]               = useState<string | null>(null);
+  const [bulkApproving, setBulkApproving]           = useState(false);
+
+  // ── Filtering + sorting ────────────────────────────────────────────────────
+  const filteredVendors = useMemo(() => {
+    const q = searchQuery.toLowerCase();
+    return vendors
+      .filter((v) => {
+        const matchSearch =
+          v.store_name.toLowerCase().includes(q) ||
+          v.email.toLowerCase().includes(q);
+
+        const derived = deriveStatus(v);
+        const matchStatus =
+          statusFilter === "all" ||
+          (statusFilter === "pending_review"    && derived === "pending") ||
+          (statusFilter === "partially_approved" && derived === "partially_approved") ||
+          (statusFilter === "rejected"           && derived === "rejected") ||
+          (statusFilter === "approved"           && (derived === "approved" || derived === "verified"));
+
+        return matchSearch && matchStatus;
+      })
+      .sort((a, b) => {
+        const da = new Date(a.created_at ?? 0).getTime();
+        const db = new Date(b.created_at ?? 0).getTime();
+        return sortBy === "newest" ? db - da : da - db;
+      });
+  }, [vendors, searchQuery, statusFilter, sortBy]);
+
+  // ── Selection helpers ──────────────────────────────────────────────────────
+  const toggleVendorSelection = (id: string) =>
+    setSelectedVendors((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+
+  const toggleSelectAll = () => {
+    setSelectedVendors(
+      selectedVendors.length === filteredVendors.length
+        ? []
+        : filteredVendors.map((v) => v.id)
     );
   };
 
-  const toggleSelectAll = () => {
-    if (selectedVendors.length === filteredVendors.length) {
-      setSelectedVendors([]);
-    } else {
-      setSelectedVendors(filteredVendors.map(v => v.id));
-    }
-  };
+  const canApproveAll = (v: VendorInQueue) =>
+    v.pending_documents > 0 && v.rejected_documents === 0;
 
-  const handleApproveAll = (vendorId: string) => {
-    setApproveVendorId(vendorId);
+  // ── Single approve-all ─────────────────────────────────────────────────────
+  const handleApproveAll = (id: string) => {
+    setApproveVendorId(id);
     setShowApproveDialog(true);
   };
 
-  const confirmApproveAll = () => {
-    if (approveVendorId) {
-      setVendors(vendors.map(vendor =>
-        vendor.id === approveVendorId
-          ? {
-              ...vendor,
-              kyc_status: "approved",
-              pending_documents: 0,
-              rejected_documents: 0,
-            }
-          : vendor
-      ));
+  const confirmApproveAll = async () => {
+    if (!approveVendorId) return;
+    setApprovingId(approveVendorId);
+    try {
+      // 1. Approve all kyc_documents for this vendor
+      await approveAllDocs.mutateAsync({
+        userId:     approveVendorId,
+        verifiedBy: "admin", // replace with authed admin user id if available
+      });
+      // 2. Update vendor kyc_status → verified
+      await updateKycStatus.mutateAsync({
+        vendorId: approveVendorId,
+        status:   "verified",
+      });
+      queryClient.invalidateQueries({ queryKey: ["kyc_queue"] });
+    } finally {
+      setApprovingId(null);
       setShowApproveDialog(false);
       setApproveVendorId(null);
     }
   };
 
-  const handleBulkApprove = () => {
-    setShowBulkApproveDialog(true);
+  // ── Bulk approve ───────────────────────────────────────────────────────────
+  const confirmBulkApprove = async () => {
+    setBulkApproving(true);
+    try {
+      await Promise.all(
+        selectedVendors.map(async (id) => {
+          await approveAllDocs.mutateAsync({ userId: id, verifiedBy: "admin" });
+          await updateKycStatus.mutateAsync({ vendorId: id, status: "verified" });
+        })
+      );
+      queryClient.invalidateQueries({ queryKey: ["kyc_queue"] });
+      setSelectedVendors([]);
+    } finally {
+      setBulkApproving(false);
+      setShowBulkDialog(false);
+    }
   };
 
-  const confirmBulkApprove = () => {
-    setVendors(vendors.map(vendor =>
-      selectedVendors.includes(vendor.id)
-        ? {
-            ...vendor,
-            kyc_status: "approved",
-            pending_documents: 0,
-            rejected_documents: 0,
-          }
-        : vendor
-    ));
-    setSelectedVendors([]);
-    setShowBulkApproveDialog(false);
-  };
-
-  const filteredVendors = vendors
-    .filter(vendor => {
-      const matchesSearch =
-        vendor.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        vendor.business_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        vendor.email.toLowerCase().includes(searchQuery.toLowerCase());
-
-      const matchesStatus =
-        statusFilter === "all" ||
-        (statusFilter === "pending_review" && vendor.kyc_status === "pending") ||
-        (statusFilter === "partially_approved" && vendor.kyc_status === "partially_approved") ||
-        (statusFilter === "rejected" && vendor.kyc_status === "rejected");
-
-      return matchesSearch && matchesStatus;
-    })
-    .sort((a, b) => {
-      if (sortBy === "newest") {
-        return new Date(b.submitted_date).getTime() - new Date(a.submitted_date).getTime();
-      } else {
-        return new Date(a.submitted_date).getTime() - new Date(b.submitted_date).getTime();
-      }
-    });
-
-  const canApproveAll = (vendor: VendorInQueue) => {
-    return vendor.pending_documents > 0 && vendor.rejected_documents === 0;
-  };
-
+  // ── Render ─────────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-background ">
-      <div className="mx-auto max-w-7xl space-y-6">
+    <div className="min-h-screen bg-background">
+      <div className="mx-auto max-w-7xl space-y-6 p-6">
+
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
@@ -286,26 +301,31 @@ export default function VendorVerificationPage() {
             </p>
           </div>
           {selectedVendors.length > 0 && (
-            <Button onClick={handleBulkApprove}>
+            <Button onClick={() => setShowBulkDialog(true)}>
               <CheckCircle className="mr-2 h-4 w-4" />
               Approve Selected ({selectedVendors.length})
             </Button>
           )}
         </div>
 
-        {/* Filters Section */}
+        {/* Error */}
+        {error && (
+          <div className="rounded-md border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive">
+            Failed to load vendors. Please refresh the page.
+          </div>
+        )}
+
+        {/* Filters */}
         <Card>
           <CardContent className="pt-6">
             <div className="grid gap-4 md:grid-cols-4">
               {/* Search */}
               <div className="space-y-2">
-                <label className="text-sm font-medium text-foreground">
-                  Search
-                </label>
+                <label className="text-sm font-medium">Search</label>
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
-                    placeholder="Vendor name or email..."
+                    placeholder="Store name or email…"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="pl-9"
@@ -313,19 +333,16 @@ export default function VendorVerificationPage() {
                 </div>
               </div>
 
-              {/* Status Filter */}
+              {/* Status */}
               <div className="space-y-2">
-                <label className="text-sm font-medium text-foreground">
-                  Filter by Status
-                </label>
+                <label className="text-sm font-medium">Filter by Status</label>
                 <Select value={statusFilter} onValueChange={setStatusFilter}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="All" />
-                  </SelectTrigger>
+                  <SelectTrigger><SelectValue placeholder="All" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All</SelectItem>
                     <SelectItem value="pending_review">Pending Review</SelectItem>
                     <SelectItem value="partially_approved">Partially Approved</SelectItem>
+                    <SelectItem value="approved">Approved / Verified</SelectItem>
                     <SelectItem value="rejected">Rejected</SelectItem>
                   </SelectContent>
                 </Select>
@@ -333,13 +350,9 @@ export default function VendorVerificationPage() {
 
               {/* Sort */}
               <div className="space-y-2">
-                <label className="text-sm font-medium text-foreground">
-                  Sort by
-                </label>
+                <label className="text-sm font-medium">Sort by</label>
                 <Select value={sortBy} onValueChange={setSortBy}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="newest">Newest First</SelectItem>
                     <SelectItem value="oldest">Oldest First</SelectItem>
@@ -347,7 +360,7 @@ export default function VendorVerificationPage() {
                 </Select>
               </div>
 
-              {/* Results count */}
+              {/* Count */}
               <div className="flex items-end">
                 <p className="text-sm text-muted-foreground">
                   Showing {filteredVendors.length} of {vendors.length} vendors
@@ -373,123 +386,188 @@ export default function VendorVerificationPage() {
                         onCheckedChange={toggleSelectAll}
                       />
                     </TableHead>
-                    <TableHead>Vendor Name</TableHead>
-                    <TableHead>Business Name</TableHead>
-                    <TableHead>Documents</TableHead>
+                    <TableHead>Store Name</TableHead>
+                    <TableHead>Email</TableHead>
+                    <TableHead>Docs (submitted/total)</TableHead>
                     <TableHead>Pending</TableHead>
                     <TableHead>Rejected</TableHead>
                     <TableHead>KYC Status</TableHead>
-                    <TableHead>Submitted Date</TableHead>
+                    <TableHead>Registered</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredVendors.map((vendor) => (
-                    <TableRow key={vendor.id}>
-                      <TableCell>
-                        <Checkbox
-                          checked={selectedVendors.includes(vendor.id)}
-                          onCheckedChange={() => toggleVendorSelection(vendor.id)}
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <div>
-                          <p className="font-medium">{vendor.name}</p>
-                          <p className="text-xs text-muted-foreground">{vendor.id}</p>
-                        </div>
-                      </TableCell>
-                      <TableCell className="font-medium">{vendor.business_name}</TableCell>
-                      <TableCell>
-                        <span className="font-semibold">
-                          {vendor.submitted_documents}/{vendor.total_documents}
-                        </span>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className="bg-yellow-50 dark:bg-yellow-900/20">
-                          {vendor.pending_documents}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        {vendor.rejected_documents > 0 ? (
-                          <Badge variant="outline" className="bg-red-50 dark:bg-red-900/20">
-                            {vendor.rejected_documents}
-                          </Badge>
-                        ) : (
-                          <span className="text-muted-foreground">-</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <Badge className={kycStatusColors[vendor.kyc_status]}>
-                          {vendor.kyc_status.replace(/_/g, " ")}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        {new Date(vendor.submitted_date).toLocaleDateString()}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-2">
-                          <Link href={`/admin/vendors/${vendor.id}/kyc`}>
-                            <Button variant="outline" size="sm">
-                              <FileText className="mr-2 h-4 w-4" />
-                              Review KYC
-                            </Button>
-                          </Link>
-                          {canApproveAll(vendor) && (
-                            <Button 
-                              size="sm"
-                              onClick={() => handleApproveAll(vendor.id)}
-                            >
-                              <CheckCircle className="mr-2 h-4 w-4" />
-                              Approve All
-                            </Button>
-                          )}
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  {isLoading
+                    ? Array.from({ length: 6 }).map((_, i) => <SkeletonRow key={i} />)
+                    : filteredVendors.length === 0
+                    ? (
+                      <TableRow>
+                        <TableCell colSpan={9} className="text-center py-12 text-muted-foreground">
+                          No vendors match your filters.
+                        </TableCell>
+                      </TableRow>
+                    )
+                    : filteredVendors.map((vendor) => {
+                        const derived    = deriveStatus(vendor);
+                        const isApproving = approvingId === vendor.id;
+
+                        return (
+                          <TableRow key={vendor.id}>
+                            <TableCell>
+                              <Checkbox
+                                checked={selectedVendors.includes(vendor.id)}
+                                onCheckedChange={() => toggleVendorSelection(vendor.id)}
+                              />
+                            </TableCell>
+
+                            {/* Store */}
+                            <TableCell>
+                              <div>
+                                <p className="font-medium">{vendor.store_name}</p>
+                                {vendor.is_verified && (
+                                  <p className="text-xs text-green-600 dark:text-green-400">
+                                    ✓ Identity verified
+                                  </p>
+                                )}
+                              </div>
+                            </TableCell>
+
+                            {/* Email */}
+                            <TableCell className="text-sm text-muted-foreground">
+                              {vendor.email}
+                            </TableCell>
+
+                            {/* Doc counts */}
+                            <TableCell>
+                              <span className="font-semibold">
+                                {vendor.submitted_documents}/{vendor.total_documents || "—"}
+                              </span>
+                            </TableCell>
+
+                            {/* Pending */}
+                            <TableCell>
+                              {vendor.pending_documents > 0 ? (
+                                <Badge variant="outline" className="bg-yellow-50 dark:bg-yellow-900/20">
+                                  {vendor.pending_documents}
+                                </Badge>
+                              ) : (
+                                <span className="text-muted-foreground">—</span>
+                              )}
+                            </TableCell>
+
+                            {/* Rejected */}
+                            <TableCell>
+                              {vendor.rejected_documents > 0 ? (
+                                <Badge variant="outline" className="bg-red-50 dark:bg-red-900/20">
+                                  {vendor.rejected_documents}
+                                </Badge>
+                              ) : (
+                                <span className="text-muted-foreground">—</span>
+                              )}
+                            </TableCell>
+
+                            {/* Status */}
+                            <TableCell>
+                              <Badge className={kycStatusColors[derived] ?? kycStatusColors.pending}>
+                                {kycLabel(derived)}
+                              </Badge>
+                            </TableCell>
+
+                            {/* Date */}
+                            <TableCell className="text-sm">
+                              {vendor.created_at
+                                ? new Date(vendor.created_at).toLocaleDateString()
+                                : "—"}
+                            </TableCell>
+
+                            {/* Actions */}
+                            <TableCell className="text-right">
+                              <div className="flex justify-end gap-2">
+                                <Link href={`/admin/vendors/${vendor.id}/kyc`}>
+                                  <Button variant="outline" size="sm">
+                                    <FileText className="mr-2 h-4 w-4" />
+                                    Review KYC
+                                  </Button>
+                                </Link>
+
+                                {canApproveAll(vendor) && (
+                                  <Button
+                                    size="sm"
+                                    disabled={isApproving}
+                                    onClick={() => handleApproveAll(vendor.id)}
+                                  >
+                                    {isApproving
+                                      ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                      : <CheckCircle className="mr-2 h-4 w-4" />
+                                    }
+                                    Approve All
+                                  </Button>
+                                )}
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })
+                  }
                 </TableBody>
               </Table>
             </div>
           </CardContent>
         </Card>
 
-        {/* Approve All Dialog */}
+        {/* Single Approve Dialog */}
         <AlertDialog open={showApproveDialog} onOpenChange={setShowApproveDialog}>
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>Approve All Documents</AlertDialogTitle>
               <AlertDialogDescription>
-                This will approve all pending documents for this vendor and mark their KYC as complete.
-                The vendor will be able to start accepting orders immediately.
+                This will approve all pending KYC documents for this vendor and set their
+                KYC status to <strong>Verified</strong>. They will be able to start
+                accepting orders immediately.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={confirmApproveAll}>
-                Approve All
+              <AlertDialogCancel disabled={!!approvingId}>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={confirmApproveAll}
+                disabled={!!approvingId}
+              >
+                {approvingId
+                  ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Approving…</>
+                  : "Approve All"
+                }
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
 
         {/* Bulk Approve Dialog */}
-        <AlertDialog open={showBulkApproveDialog} onOpenChange={setShowBulkApproveDialog}>
+        <AlertDialog open={showBulkDialog} onOpenChange={setShowBulkDialog}>
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>Bulk Approve Selected Vendors</AlertDialogTitle>
               <AlertDialogDescription>
-                This will approve all pending documents for {selectedVendors.length} selected vendor(s)
-                and mark their KYC as complete. They will be able to start accepting orders immediately.
+                This will approve all pending KYC documents for{" "}
+                <strong>{selectedVendors.length}</strong> selected vendor(s) and mark
+                them as <strong>Verified</strong>. They will be able to start accepting
+                orders immediately.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={confirmBulkApprove}>
-                Approve {selectedVendors.length} Vendor(s)
+              <AlertDialogCancel disabled={bulkApproving}>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={confirmBulkApprove}
+                disabled={bulkApproving}
+              >
+                {bulkApproving
+                  ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Approving…</>
+                  : `Approve ${selectedVendors.length} Vendor(s)`
+                }
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+
       </div>
     </div>
   );

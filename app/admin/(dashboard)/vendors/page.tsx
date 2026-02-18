@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Search, Plus, MoreVertical, Eye, FileText, Ban, CheckCircle, Loader2 } from "lucide-react";
+import { Search, Plus, MoreVertical, Eye, FileText, Ban, CheckCircle, Loader2, Edit2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -117,10 +117,10 @@ export default function VendorsPage() {
         {/* Header */}
         <div className="flex items-center justify-between">
           <h1 className="text-3xl font-bold text-foreground">Vendor Management</h1>
-          <Button onClick={() => router.push("./vendors/add")}>
+          {/* <Button onClick={() => router.push("./vendors/upsert")}>
             <Plus className="mr-2 h-4 w-4" />
             Add Vendor
-          </Button>
+          </Button> */}
         </div>
 
         {/* Filters */}
@@ -253,6 +253,11 @@ export default function VendorsPage() {
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
+                                <DropdownMenuItem asChild>
+                                  <Link href={`/admin/vendors/upsert?edit=${vendor.user_id}`}>
+                                    <Edit2 className="mr-2 h-4 w-4" /> Edit Profile
+                                  </Link>
+                                </DropdownMenuItem>
                                 <DropdownMenuItem asChild>
                                   <Link href={`/admin/vendors/${vendor.user_id}`}>
                                     <Eye className="mr-2 h-4 w-4" /> View Profile

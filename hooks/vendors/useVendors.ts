@@ -458,3 +458,49 @@ export function useUpdateVendorBusinessHours() {
     },
   });
 }
+
+
+/**
+ * Upload a file to `vendors/{userId}/{uuid}.{ext}` and return the public URL.
+ * Overwrites any previous file at that path.
+ */
+const STORAGE_BUCKET = "vendors";
+export async function uploadVendorImage(
+  file: File,
+  userId: string,
+  slot: "store_image" | "store_banner"
+): Promise<string> {
+  const ext      = file.name.split(".").pop() ?? "webp";
+  // Use a stable name per slot so re-uploads overwrite the old file
+  const fileName = `${slot}-${crypto.randomUUID()}.${ext}`;
+  const path     = `${userId}/${fileName}`;
+
+  const { error: uploadError } = await supabase.storage
+    .from(STORAGE_BUCKET)
+    .upload(path, file, {
+      upsert: true,
+      contentType: file.type,
+    });
+
+  if (uploadError) throw new Error(`Image upload failed: ${uploadError.message}`);
+
+  const { data } = supabase.storage.from(STORAGE_BUCKET).getPublicUrl(path);
+  return data.publicUrl;
+}
+
+/**
+ * Delete an old image from storage when replaced.
+ * Path is derived from the public URL: strip the bucket prefix.
+ */
+export async function deleteVendorImage(publicUrl: string) {
+  try {
+    // URL format: .../storage/v1/object/public/vendors/{userId}/{fileName}
+    const marker = `/public/${STORAGE_BUCKET}/`;
+    const idx    = publicUrl.indexOf(marker);
+    if (idx === -1) return;
+    const path   = publicUrl.slice(idx + marker.length);
+    await supabase.storage.from(STORAGE_BUCKET).remove([path]);
+  } catch {
+    // Non-critical — ignore deletion errors
+  }
+}
