@@ -54,8 +54,8 @@ const navigation = [
   { name: "Payouts", href: "/admin/payouts", icon: DollarSign },
   { name: "Earnings", href: "/admin/earnings", icon: CircleDollarSign },
   // { name: "Reports", href: "/admin/reports", icon: BarChart3 },
-  { name: "Support", href: "/admin/support", icon: Headphones },
-  { name: "Settings", href: "/admin/settings", icon: Settings },
+  { name: "Support (Not Implemented)", href: "/admin/support", icon: Headphones },
+  { name: "Settings (Not Implemented)", href: "/admin/settings", icon: Settings },
 ];
 
 export default function AdminLayout({

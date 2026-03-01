@@ -43,25 +43,32 @@ const formatCurrency = (amount: number) =>
 const formatNumber = (num: number) =>
   new Intl.NumberFormat("en-IN").format(num);
 
-/** Convert a "week" / "month" / "today" selector into a DateRangeFilter */
+/** Convert a "week" / "month" / "today" / "all" selector into a DateRangeFilter */
 function getDateRange(range: string): DateRangeFilter | undefined {
-  const now   = new Date();
-  const today = now.toISOString().split("T")[0];
+  const now    = new Date();
+  const today  = now.toISOString().split("T")[0];
+  const todayEnd = `${today}T23:59:59`;
 
-  if (range === "today") return { from: today, to: today };
+  if (range === "all") return undefined;
+
+  if (range === "today") {
+    return { from: `${today}T00:00:00`, to: todayEnd };
+  }
 
   if (range === "week") {
     const from = new Date(now);
     from.setDate(now.getDate() - 6);
-    return { from: from.toISOString().split("T")[0], to: today };
+    const fromStr = from.toISOString().split("T")[0];
+    return { from: `${fromStr}T00:00:00`, to: todayEnd };
   }
 
   if (range === "month") {
-    const from = new Date(now.getFullYear(), now.getMonth(), 1);
-    return { from: from.toISOString().split("T")[0], to: today };
+    const from    = new Date(now.getFullYear(), now.getMonth(), 1);
+    const fromStr = from.toISOString().split("T")[0];
+    return { from: `${fromStr}T00:00:00`, to: todayEnd };
   }
 
-  return undefined; // "all" / custom → no filter
+  return undefined;
 }
 
 // ─── sub-components ──────────────────────────────────────────────────────────
@@ -133,7 +140,7 @@ function BarChartSkeleton() {
 // ─── main page ───────────────────────────────────────────────────────────────
 
 export default function AdminEarningsPage() {
-  const [dateRange, setDateRange] = useState("week");
+  const [dateRange, setDateRange] = useState("month");
 
   const dateFilter = useMemo(() => getDateRange(dateRange), [dateRange]);
 
@@ -151,7 +158,10 @@ export default function AdminEarningsPage() {
   const handleExport = async () => {
     const result = await generateReport.mutateAsync({
       reportId: "daily-earnings",
-      dateRange: dateFilter ?? { from: "2000-01-01", to: new Date().toISOString().split("T")[0] },
+      dateRange: dateFilter ?? {
+        from: "2000-01-01T00:00:00",
+        to:   `${new Date().toISOString().split("T")[0]}T23:59:59`,
+      },
       format: "csv",
     });
     if (result.csv) {
@@ -165,7 +175,7 @@ export default function AdminEarningsPage() {
     }
   };
 
-  const maxEarnings = Math.max(...(dailyTrend ?? []).map((d) => d.earnings), 1);
+  const maxEarnings  = Math.max(...(dailyTrend ?? []).map((d) => d.earnings), 1);
   const maxBreakdown = Math.max(
     ...(breakdown ?? []).map((d) => d.vendorPayout + d.commission + d.deliveryFee),
     1
@@ -174,6 +184,7 @@ export default function AdminEarningsPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 p-8">
       <div className="max-w-7xl mx-auto space-y-6">
+
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
@@ -188,12 +199,17 @@ export default function AdminEarningsPage() {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="all">All Time</SelectItem>
                 <SelectItem value="today">Today</SelectItem>
                 <SelectItem value="week">This Week</SelectItem>
                 <SelectItem value="month">This Month</SelectItem>
               </SelectContent>
             </Select>
-            <Button onClick={handleExport} disabled={generateReport.isPending} className="gap-2">
+            <Button
+              onClick={handleExport}
+              disabled={generateReport.isPending}
+              className="gap-2"
+            >
               <Download className="w-4 h-4" />
               {generateReport.isPending ? "Exporting…" : "Export CSV"}
             </Button>
@@ -259,10 +275,10 @@ export default function AdminEarningsPage() {
         {/* Quick Links */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           {[
-            { href: "/admin/earnings/orders",  label: "Order Earnings",     sub: "View breakdown",  Icon: Package,  bg: "bg-blue-100",    color: "text-blue-600",    border: "hover:border-blue-300" },
-            { href: "/admin/earnings/vendors", label: "Vendor Commission",  sub: "Track payouts",   Icon: ShoppingCart, bg: "bg-emerald-100", color: "text-emerald-600", border: "hover:border-emerald-300" },
-            { href: "/admin/earnings/delivery",label: "Delivery Earnings",  sub: "Partner payouts", Icon: Truck,    bg: "bg-amber-100",   color: "text-amber-600",   border: "hover:border-amber-300" },
-            { href: "/admin/earnings/reports", label: "Financial Reports",  sub: "Download data",   Icon: Download, bg: "bg-purple-100",  color: "text-purple-600",  border: "hover:border-purple-300" },
+            { href: "/admin/earnings/orders",   label: "Order Earnings",    sub: "View breakdown",  Icon: Package,      bg: "bg-blue-100",    color: "text-blue-600",    border: "hover:border-blue-300"    },
+            { href: "/admin/earnings/vendors",  label: "Vendor Commission", sub: "Track payouts",   Icon: ShoppingCart, bg: "bg-emerald-100", color: "text-emerald-600", border: "hover:border-emerald-300" },
+            { href: "/admin/earnings/delivery", label: "Delivery Earnings", sub: "Partner payouts", Icon: Truck,        bg: "bg-amber-100",   color: "text-amber-600",   border: "hover:border-amber-300"   },
+            { href: "/admin/earnings/reports",  label: "Financial Reports", sub: "Download data",   Icon: Download,     bg: "bg-purple-100",  color: "text-purple-600",  border: "hover:border-purple-300"  },
           ].map(({ href, label, sub, Icon, bg, color, border }) => (
             <Link key={href} href={href}>
               <Card className={`hover:shadow-lg transition-shadow cursor-pointer border-2 ${border}`}>
@@ -284,6 +300,7 @@ export default function AdminEarningsPage() {
 
         {/* Charts */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
           {/* Daily Earnings Trend */}
           <Card>
             <CardHeader>
@@ -292,6 +309,10 @@ export default function AdminEarningsPage() {
             <CardContent>
               {trendLoading ? (
                 <BarChartSkeleton />
+              ) : (dailyTrend ?? []).length === 0 ? (
+                <div className="h-64 flex items-center justify-center text-slate-400 text-sm">
+                  No data for selected range
+                </div>
               ) : (
                 <div className="h-64 flex items-end justify-between gap-2">
                   {(dailyTrend ?? []).map((day, index) => {
@@ -304,7 +325,7 @@ export default function AdminEarningsPage() {
                       <div key={index} className="flex-1 flex flex-col items-center gap-2">
                         <div
                           className="w-full bg-gradient-to-t from-blue-500 to-blue-400 rounded-t-lg hover:from-blue-600 hover:to-blue-500 transition-colors relative group"
-                          style={{ height: `${height}%` }}
+                          style={{ height: `${Math.max(height, 2)}%` }}
                         >
                           <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-slate-900 text-white px-2 py-1 rounded text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
                             {formatCurrency(day.earnings)}
@@ -314,11 +335,6 @@ export default function AdminEarningsPage() {
                       </div>
                     );
                   })}
-                  {!trendLoading && (dailyTrend ?? []).length === 0 && (
-                    <div className="w-full flex items-center justify-center text-slate-400 text-sm">
-                      No data for selected range
-                    </div>
-                  )}
                 </div>
               )}
             </CardContent>
@@ -348,17 +364,17 @@ export default function AdminEarningsPage() {
                 ) : (
                   <div className="h-52 flex items-end justify-between gap-2">
                     {(breakdown ?? []).map((day, index) => {
-                      const total          = day.vendorPayout + day.commission + day.deliveryFee;
-                      const scale          = (total / maxBreakdown) * 180; // px scale
-                      const vendorPx       = (day.vendorPayout / total) * scale;
-                      const commissionPx   = (day.commission   / total) * scale;
-                      const deliveryPx     = (day.deliveryFee  / total) * scale;
+                      const total        = day.vendorPayout + day.commission + day.deliveryFee;
+                      const scale        = (total / maxBreakdown) * 180;
+                      const vendorPx     = total > 0 ? (day.vendorPayout / total) * scale : 0;
+                      const commissionPx = total > 0 ? (day.commission   / total) * scale : 0;
+                      const deliveryPx   = total > 0 ? (day.deliveryFee  / total) * scale : 0;
                       return (
                         <div key={index} className="flex-1 flex flex-col items-center gap-2">
                           <div className="w-full flex flex-col">
-                            <div className="w-full bg-blue-500 rounded-t-lg"    style={{ height: `${deliveryPx}px` }} />
-                            <div className="w-full bg-emerald-500"              style={{ height: `${commissionPx}px` }} />
-                            <div className="w-full bg-slate-400 rounded-b-sm"  style={{ height: `${vendorPx}px` }} />
+                            <div className="w-full bg-blue-500 rounded-t-lg"   style={{ height: `${deliveryPx}px`   }} />
+                            <div className="w-full bg-emerald-500"             style={{ height: `${commissionPx}px` }} />
+                            <div className="w-full bg-slate-400 rounded-b-sm" style={{ height: `${vendorPx}px`     }} />
                           </div>
                           <div className="text-xs text-slate-600 font-medium">{day.label}</div>
                         </div>
@@ -402,14 +418,16 @@ export default function AdminEarningsPage() {
                   <div className="space-y-2">
                     <div className="flex items-center gap-2 text-slate-600">
                       <Package className="w-4 h-4" />
-                      <span className="text-sm font-medium">Cancelled/Refunded</span>
+                      <span className="text-sm font-medium">Cancelled / Refunded</span>
                     </div>
                     <div className="text-3xl font-bold text-red-600">
-                      {formatNumber((overview?.cancelledOrders ?? 0) + (overview?.refundedOrders ?? 0))}
+                      {formatNumber(
+                        (overview?.cancelledOrders ?? 0) + (overview?.refundedOrders ?? 0)
+                      )}
                     </div>
                     <div className="text-xs text-slate-500">
                       {overview?.cancelledOrders ?? 0} cancelled,{" "}
-                      {overview?.refundedOrders ?? 0} refunded
+                      {overview?.refundedOrders  ?? 0} refunded
                     </div>
                   </div>
 
@@ -458,19 +476,27 @@ export default function AdminEarningsPage() {
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between">
                     <span className="text-slate-600">Gross Order Value</span>
-                    <span className="font-semibold">{formatCurrency(overview?.grossOrderValue ?? 0)}</span>
+                    <span className="font-semibold">
+                      {formatCurrency(overview?.grossOrderValue ?? 0)}
+                    </span>
                   </div>
                   <div className="flex justify-between text-emerald-600">
                     <span>+ Platform Commission</span>
-                    <span className="font-semibold">+{formatCurrency(overview?.platformCommission ?? 0)}</span>
+                    <span className="font-semibold">
+                      +{formatCurrency(overview?.platformCommission ?? 0)}
+                    </span>
                   </div>
                   <div className="flex justify-between text-blue-600">
                     <span>+ Delivery Fees Collected</span>
-                    <span className="font-semibold">+{formatCurrency(overview?.deliveryFeesCollected ?? 0)}</span>
+                    <span className="font-semibold">
+                      +{formatCurrency(overview?.deliveryFeesCollected ?? 0)}
+                    </span>
                   </div>
                   <div className="flex justify-between text-red-600">
                     <span>− Discounts & Coupons</span>
-                    <span className="font-semibold">−{formatCurrency(overview?.totalDiscounts ?? 0)}</span>
+                    <span className="font-semibold">
+                      −{formatCurrency(overview?.totalDiscounts ?? 0)}
+                    </span>
                   </div>
                   <Separator />
                   <div className="flex justify-between text-lg font-bold text-purple-600">
@@ -482,6 +508,7 @@ export default function AdminEarningsPage() {
             </div>
           </CardContent>
         </Card>
+
       </div>
     </div>
   );
