@@ -36,7 +36,8 @@ import {
   Ticket,
   Wallet,
   Package,
-  CircleDollarSign
+  CircleDollarSign,
+  Banknote
 } from "lucide-react";
 
 const navigation = [
@@ -48,6 +49,7 @@ const navigation = [
   { name: "Orders", href: "/admin/order-groups", icon: ShoppingCart },
   { name: "Vendors", href: "/admin/vendors", icon: Store },
   { name: "Delivery Partners", href: "/admin/delivery", icon: Truck },
+  { name: "Bank Details", href: "/admin/banks", icon: Banknote },
   { name: "Wallets", href: "/admin/wallets", icon: Wallet },
   { name: "Payouts", href: "/admin/payouts", icon: DollarSign },
   { name: "Earnings", href: "/admin/earnings", icon: CircleDollarSign },

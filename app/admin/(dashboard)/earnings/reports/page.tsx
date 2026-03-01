@@ -5,96 +5,281 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
+  Select, SelectContent, SelectItem,
+  SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
-  ArrowLeft,
-  Download,
-  FileText,
-  FileSpreadsheet,
-  FileImage,
-  Calendar,
+  ArrowLeft, Download, FileText, FileSpreadsheet,
+  FileImage, Calendar, CheckCircle2, Loader2,
 } from "lucide-react";
 import Link from "next/link";
+import {
+  useReportPreview,
+  useGenerateReport,
+  type ReportType,
+  type ExportFormat,
+} from "@/hooks/earnings/useEarnings";
 
-const reportTypes = [
-  {
-    id: "daily-earnings",
-    name: "Daily Earnings Report",
-    description: "Complete breakdown of daily earnings, orders, and commissions",
-    icon: FileText,
-    color: "blue",
-  },
-  {
-    id: "vendor-commission",
-    name: "Vendor Commission Report",
-    description: "Detailed commission tracking by vendor with payout status",
-    icon: FileSpreadsheet,
-    color: "emerald",
-  },
-  {
-    id: "delivery-payout",
-    name: "Delivery Payout Report",
-    description: "Delivery partner earnings, incentives, and payment details",
-    icon: FileText,
-    color: "purple",
-  },
-  {
-    id: "tax-gst",
-    name: "Tax & GST Report",
-    description: "Tax summaries, GST breakdown, and compliance data",
-    icon: FileImage,
-    color: "amber",
-  },
-  {
-    id: "refund-cancellation",
-    name: "Refund & Cancellation Report",
-    description: "All refunds, cancellations, and their financial impact",
-    icon: FileText,
-    color: "red",
-  },
-  {
-    id: "monthly-summary",
-    name: "Monthly Summary Report",
-    description: "Comprehensive monthly financial summary with trends",
-    icon: FileSpreadsheet,
-    color: "indigo",
-  },
+// ─── helpers ─────────────────────────────────────────────────────────────────
+
+const formatCurrency = (amount: number) =>
+  new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    minimumFractionDigits: 0,
+  }).format(amount);
+
+/** Trigger browser download for a CSV string */
+function downloadCsv(csv: string, filename: string) {
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url  = URL.createObjectURL(blob);
+  const a    = Object.assign(document.createElement("a"), { href: url, download: filename });
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+/** Build a quick date range (today / this week / this month) */
+function quickRange(type: "today" | "week" | "month") {
+  const now   = new Date();
+  const to    = now.toISOString().split("T")[0];
+  if (type === "today") return { from: to, to };
+  if (type === "week") {
+    const from = new Date(now); from.setDate(now.getDate() - 6);
+    return { from: from.toISOString().split("T")[0], to };
+  }
+  const from = new Date(now.getFullYear(), now.getMonth(), 1);
+  return { from: from.toISOString().split("T")[0], to };
+}
+
+// ─── report catalogue ────────────────────────────────────────────────────────
+
+const REPORT_TYPES: {
+  id: ReportType;
+  name: string;
+  description: string;
+  icon: React.ElementType;
+  color: string;
+  gradientFrom: string;
+  gradientTo: string;
+}[] = [
+  { id: "daily-earnings",       name: "Daily Earnings Report",       description: "Complete breakdown of daily earnings, orders, and commissions",  icon: FileText,        color: "blue",    gradientFrom: "from-blue-500",    gradientTo: "to-blue-600"    },
+  { id: "vendor-commission",    name: "Vendor Commission Report",    description: "Detailed commission tracking by vendor with payout status",     icon: FileSpreadsheet, color: "emerald", gradientFrom: "from-emerald-500", gradientTo: "to-emerald-600" },
+  { id: "delivery-payout",      name: "Delivery Payout Report",      description: "Delivery partner earnings, incentives, and payment details",    icon: FileText,        color: "purple",  gradientFrom: "from-purple-500",  gradientTo: "to-purple-600"  },
+  { id: "tax-gst",              name: "Tax & GST Report",            description: "Tax summaries, GST breakdown, and compliance data",             icon: FileImage,       color: "amber",   gradientFrom: "from-amber-500",   gradientTo: "to-amber-600"   },
+  { id: "refund-cancellation",  name: "Refund & Cancellation Report",description: "All refunds, cancellations, and their financial impact",        icon: FileText,        color: "red",     gradientFrom: "from-red-500",     gradientTo: "to-red-600"     },
+  { id: "monthly-summary",      name: "Monthly Summary Report",      description: "Comprehensive monthly financial summary with trends",           icon: FileSpreadsheet, color: "indigo",  gradientFrom: "from-indigo-500",  gradientTo: "to-indigo-600"  },
 ];
 
-export default function FinancialReportsPage() {
-  const [selectedReport, setSelectedReport] = useState("daily-earnings");
-  const [dateFrom, setDateFrom] = useState("2024-02-01");
-  const [dateTo, setDateTo] = useState("2024-02-13");
-  const [format, setFormat] = useState("csv");
+// ─── preview chips ────────────────────────────────────────────────────────────
 
-  const handleDownload = (reportId, exportFormat) => {
-    console.log(`Downloading ${reportId} in ${exportFormat} format`);
-    console.log(`Date range: ${dateFrom} to ${dateTo}`);
-    // Download logic here
+function PreviewChips({
+  reportId,
+  dateRange,
+}: {
+  reportId: ReportType;
+  dateRange: { from: string; to: string };
+}) {
+  const { data, isLoading } = useReportPreview(reportId, dateRange);
+
+  if (isLoading)
+    return (
+      <div className="flex gap-2 mt-2">
+        <Skeleton className="h-5 w-20 rounded-full" />
+        <Skeleton className="h-5 w-24 rounded-full" />
+      </div>
+    );
+
+  if (!data) return null;
+
+  const chips: string[] = [];
+
+  if ("rows" in data)            chips.push(`${data.rows} rows`);
+  if ("totalRevenue" in data)    chips.push(`Revenue: ${formatCurrency(data.totalRevenue as number)}`);
+  if ("totalCommission" in data) chips.push(`Commission: ${formatCurrency(data.totalCommission as number)}`);
+  if ("totalEarnings" in data)   chips.push(`Earnings: ${formatCurrency(data.totalEarnings as number)}`);
+  if ("totalTax" in data)        chips.push(`Tax: ${formatCurrency(data.totalTax as number)}`);
+  if ("totalValue" in data)      chips.push(`Value: ${formatCurrency(data.totalValue as number)}`);
+  if ("cancelled" in data)       chips.push(`${data.cancelled as number} cancelled`);
+  if ("refunded" in data)        chips.push(`${data.refunded as number} refunded`);
+
+  return (
+    <div className="flex flex-wrap gap-1.5 mt-2">
+      {chips.map((chip) => (
+        <span key={chip} className="text-xs px-2 py-0.5 bg-slate-100 text-slate-600 rounded-full">
+          {chip}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+// ─── report card ─────────────────────────────────────────────────────────────
+
+function ReportCard({
+  report,
+  isSelected,
+  dateRange,
+  onSelect,
+  onDownload,
+  isPending,
+  pendingFormat,
+}: {
+  report: (typeof REPORT_TYPES)[0];
+  isSelected: boolean;
+  dateRange: { from: string; to: string };
+  onSelect: () => void;
+  onDownload: (format: ExportFormat) => void;
+  isPending: boolean;
+  pendingFormat: ExportFormat | null;
+}) {
+  const Icon = report.icon;
+
+  return (
+    <Card
+      className={`hover:shadow-lg transition-all cursor-pointer ${isSelected ? "ring-2 ring-blue-500" : ""}`}
+      onClick={onSelect}
+    >
+      <CardHeader>
+        <div
+          className={`w-12 h-12 rounded-lg bg-gradient-to-br ${report.gradientFrom} ${report.gradientTo} flex items-center justify-center mb-3`}
+        >
+          <Icon className="w-6 h-6 text-white" />
+        </div>
+        <CardTitle className="text-lg">{report.name}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <p className="text-sm text-slate-600 mb-2">{report.description}</p>
+
+        {/* Live preview chips */}
+        {isSelected && <PreviewChips reportId={report.id} dateRange={dateRange} />}
+
+        <Separator className="my-4" />
+
+        <div className="space-y-2">
+          {/* Primary CSV download */}
+          <Button
+            className="w-full gap-2 bg-gradient-to-r from-slate-700 to-slate-800 hover:from-slate-800 hover:to-slate-900 text-white"
+            disabled={isPending}
+            onClick={(e) => { e.stopPropagation(); onDownload("csv"); }}
+          >
+            {isPending && pendingFormat === "csv" ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Download className="w-4 h-4" />
+            )}
+            {isPending && pendingFormat === "csv" ? "Generating…" : "Download CSV"}
+          </Button>
+
+          <div className="grid grid-cols-2 gap-2">
+            <Button
+              variant="outline" size="sm"
+              disabled={isPending}
+              onClick={(e) => { e.stopPropagation(); onDownload("xlsx"); }}
+              className="gap-2"
+            >
+              {isPending && pendingFormat === "xlsx" ? (
+                <Loader2 className="w-3 h-3 animate-spin" />
+              ) : (
+                <FileSpreadsheet className="w-4 h-4" />
+              )}
+              Excel
+            </Button>
+            <Button
+              variant="outline" size="sm"
+              disabled={isPending}
+              onClick={(e) => { e.stopPropagation(); onDownload("pdf"); }}
+              className="gap-2"
+            >
+              {isPending && pendingFormat === "pdf" ? (
+                <Loader2 className="w-3 h-3 animate-spin" />
+              ) : (
+                <FileImage className="w-4 h-4" />
+              )}
+              PDF
+            </Button>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─── main page ────────────────────────────────────────────────────────────────
+
+export default function FinancialReportsPage() {
+  const [selectedReport, setSelectedReport] = useState<ReportType>("daily-earnings");
+  const [dateFrom, setDateFrom]             = useState(() => quickRange("month").from);
+  const [dateTo,   setDateTo]               = useState(() => quickRange("month").to);
+  const [pendingReport,  setPendingReport]  = useState<ReportType | null>(null);
+  const [pendingFormat,  setPendingFormat]  = useState<ExportFormat | null>(null);
+  const [lastDownloaded, setLastDownloaded] = useState<ReportType | null>(null);
+
+  const generateReport = useGenerateReport();
+
+  const dateRange = { from: dateFrom, to: dateTo };
+  const dayCount  = Math.max(
+    0,
+    Math.ceil((new Date(dateTo).getTime() - new Date(dateFrom).getTime()) / 86_400_000)
+  );
+
+  const handleDownload = async (reportId: ReportType, format: ExportFormat) => {
+    setPendingReport(reportId);
+    setPendingFormat(format);
+    try {
+      const result = await generateReport.mutateAsync({ reportId, dateRange, format });
+
+      if (format === "csv" && result.csv) {
+        downloadCsv(result.csv, result.filename);
+      } else if (format === "xlsx" || format === "pdf") {
+        // For xlsx / pdf: convert rows → JSON blob as a placeholder
+        // (wire in SheetJS / jsPDF in production)
+        const json = JSON.stringify(result.rows, null, 2);
+        const blob = new Blob([json], { type: "application/json" });
+        const url  = URL.createObjectURL(blob);
+        const a    = Object.assign(document.createElement("a"), {
+          href: url,
+          download: result.filename.replace(`.${format}`, ".json"),
+        });
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }
+
+      setLastDownloaded(reportId);
+      setTimeout(() => setLastDownloaded(null), 3000);
+    } finally {
+      setPendingReport(null);
+      setPendingFormat(null);
+    }
   };
 
-  const getColorClasses = (color) => {
-    const colors = {
-      blue: "from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700",
-      emerald: "from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700",
-      purple: "from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700",
-      amber: "from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700",
-      red: "from-red-500 to-red-600 hover:from-red-600 hover:to-red-700",
-      indigo: "from-indigo-500 to-indigo-600 hover:from-indigo-600 hover:to-indigo-700",
-    };
-    return colors[color] || colors.blue;
+  const handleQuickExport = async (type: "today" | "week" | "month") => {
+    const range = quickRange(type);
+    setPendingReport("daily-earnings");
+    setPendingFormat("csv");
+    try {
+      const result = await generateReport.mutateAsync({
+        reportId: "daily-earnings",
+        dateRange: range,
+        format: "csv",
+      });
+      if (result.csv) downloadCsv(result.csv, result.filename);
+    } finally {
+      setPendingReport(null);
+      setPendingFormat(null);
+    }
   };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 p-8">
       <div className="max-w-7xl mx-auto space-y-6">
+
         {/* Header */}
         <div className="flex items-center gap-4">
           <Link href="/admin/earnings">
@@ -112,7 +297,15 @@ export default function FinancialReportsPage() {
           </div>
         </div>
 
-        {/* Date Range & Format Selector */}
+        {/* Success toast */}
+        {lastDownloaded && (
+          <div className="flex items-center gap-2 p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-emerald-700 text-sm">
+            <CheckCircle2 className="w-4 h-4" />
+            Report downloaded successfully!
+          </div>
+        )}
+
+        {/* Report Configuration */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -128,30 +321,36 @@ export default function FinancialReportsPage() {
                   id="dateFrom"
                   type="date"
                   value={dateFrom}
+                  max={dateTo}
                   onChange={(e) => setDateFrom(e.target.value)}
                 />
               </div>
-
               <div className="space-y-2">
                 <Label htmlFor="dateTo">To Date</Label>
                 <Input
                   id="dateTo"
                   type="date"
                   value={dateTo}
+                  min={dateFrom}
                   onChange={(e) => setDateTo(e.target.value)}
                 />
               </div>
-
               <div className="space-y-2">
-                <Label htmlFor="format">Export Format</Label>
-                <Select value={format} onValueChange={setFormat}>
-                  <SelectTrigger id="format">
-                    <SelectValue />
+                <Label>Quick Select</Label>
+                <Select
+                  onValueChange={(v) => {
+                    const r = quickRange(v as "today" | "week" | "month");
+                    setDateFrom(r.from);
+                    setDateTo(r.to);
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Jump to range…" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="csv">CSV (Excel Compatible)</SelectItem>
-                    <SelectItem value="xlsx">Excel (.xlsx)</SelectItem>
-                    <SelectItem value="pdf">PDF Document</SelectItem>
+                    <SelectItem value="today">Today</SelectItem>
+                    <SelectItem value="week">Last 7 Days</SelectItem>
+                    <SelectItem value="month">This Month</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -159,121 +358,63 @@ export default function FinancialReportsPage() {
 
             <div className="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
               <p className="text-sm text-blue-800">
-                <strong>Selected Range:</strong> {dateFrom} to {dateTo} ({Math.ceil((new Date(dateTo) - new Date(dateFrom)) / (1000 * 60 * 60 * 24))} days)
+                <strong>Selected Range:</strong> {dateFrom} → {dateTo}{" "}
+                <span className="text-blue-600">({dayCount} day{dayCount !== 1 ? "s" : ""})</span>
               </p>
             </div>
           </CardContent>
         </Card>
 
-        {/* Report Types Grid */}
+        {/* Report Cards Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {reportTypes.map((report) => {
-            const Icon = report.icon;
-            return (
-              <Card
-                key={report.id}
-                className={`hover:shadow-lg transition-all cursor-pointer ${
-                  selectedReport === report.id ? "ring-2 ring-blue-500" : ""
-                }`}
-                onClick={() => setSelectedReport(report.id)}
-              >
-                <CardHeader>
-                  <div className={`w-12 h-12 rounded-lg bg-gradient-to-br ${getColorClasses(report.color)} flex items-center justify-center mb-3`}>
-                    <Icon className="w-6 h-6 text-white" />
-                  </div>
-                  <CardTitle className="text-lg">{report.name}</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-sm text-slate-600 mb-4">
-                    {report.description}
-                  </p>
-
-                  <Separator className="my-4" />
-
-                  <div className="space-y-2">
-                    <Button
-                      className="w-full gap-2 bg-gradient-to-r text-white"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDownload(report.id, "csv");
-                      }}
-                    >
-                      <Download className="w-4 h-4" />
-                      Download CSV
-                    </Button>
-
-                    <div className="grid grid-cols-2 gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDownload(report.id, "xlsx");
-                        }}
-                        className="gap-2"
-                      >
-                        <FileSpreadsheet className="w-4 h-4" />
-                        Excel
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDownload(report.id, "pdf");
-                        }}
-                        className="gap-2"
-                      >
-                        <FileImage className="w-4 h-4" />
-                        PDF
-                      </Button>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
+          {REPORT_TYPES.map((report) => (
+            <ReportCard
+              key={report.id}
+              report={report}
+              isSelected={selectedReport === report.id}
+              dateRange={dateRange}
+              onSelect={() => setSelectedReport(report.id)}
+              onDownload={(fmt) => handleDownload(report.id, fmt)}
+              isPending={pendingReport === report.id && generateReport.isPending}
+              pendingFormat={pendingReport === report.id ? pendingFormat : null}
+            />
+          ))}
         </div>
 
-        {/* Quick Export Section */}
+        {/* Quick Exports */}
         <Card>
           <CardHeader>
             <CardTitle>Quick Exports</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
-              <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg">
-                <div>
-                  <div className="font-medium">Today's Earnings</div>
-                  <div className="text-sm text-slate-600">All earnings data for today</div>
+              {(
+                [
+                  { type: "today" as const, label: "Today's Earnings",            sub: "All earnings data for today"             },
+                  { type: "week"  as const, label: "This Week's Summary",          sub: "Weekly financial summary"                },
+                  { type: "month" as const, label: "This Month's Complete Report", sub: "All financial data for current month"    },
+                ] as const
+              ).map(({ type, label, sub }) => (
+                <div key={type} className="flex items-center justify-between p-4 bg-slate-50 rounded-lg">
+                  <div>
+                    <div className="font-medium">{label}</div>
+                    <div className="text-sm text-slate-600">{sub}</div>
+                  </div>
+                  <Button
+                    variant="outline"
+                    className="gap-2"
+                    disabled={generateReport.isPending}
+                    onClick={() => handleQuickExport(type)}
+                  >
+                    {generateReport.isPending && pendingReport === "daily-earnings" ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Download className="w-4 h-4" />
+                    )}
+                    Export
+                  </Button>
                 </div>
-                <Button variant="outline" className="gap-2">
-                  <Download className="w-4 h-4" />
-                  Export
-                </Button>
-              </div>
-
-              <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg">
-                <div>
-                  <div className="font-medium">This Week's Summary</div>
-                  <div className="text-sm text-slate-600">Weekly financial summary</div>
-                </div>
-                <Button variant="outline" className="gap-2">
-                  <Download className="w-4 h-4" />
-                  Export
-                </Button>
-              </div>
-
-              <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg">
-                <div>
-                  <div className="font-medium">This Month's Complete Report</div>
-                  <div className="text-sm text-slate-600">All financial data for current month</div>
-                </div>
-                <Button variant="outline" className="gap-2">
-                  <Download className="w-4 h-4" />
-                  Export
-                </Button>
-              </div>
+              ))}
             </div>
           </CardContent>
         </Card>
@@ -293,7 +434,7 @@ export default function FinancialReportsPage() {
           </CardContent>
         </Card>
 
-        {/* Scheduled Reports */}
+        {/* Scheduled Reports — Coming Soon */}
         <Card>
           <CardHeader>
             <CardTitle>Scheduled Reports (Coming Soon)</CardTitle>
@@ -309,6 +450,7 @@ export default function FinancialReportsPage() {
             </div>
           </CardContent>
         </Card>
+
       </div>
     </div>
   );
