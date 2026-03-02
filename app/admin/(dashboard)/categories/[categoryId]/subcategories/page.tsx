@@ -285,7 +285,7 @@ export default function SubcategoriesPage() {
                           )}
                         </TableCell>
                         <TableCell>
-                          {new Date(subcategory.created_at).toLocaleDateString()}
+                          {new Date(subcategory?.created_at).toLocaleDateString()}
                         </TableCell>
                         <TableCell className="text-right">
                           <DropdownMenu>

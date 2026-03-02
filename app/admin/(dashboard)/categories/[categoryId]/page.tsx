@@ -183,10 +183,10 @@ export default function CategoryDetailPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                {new Date(category.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                {new Date(category?.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
               </div>
               <p className="text-xs text-muted-foreground mt-1">
-                {new Date(category.created_at).toLocaleDateString()}
+                {new Date(category?.created_at).toLocaleDateString()}
               </p>
             </CardContent>
           </Card>

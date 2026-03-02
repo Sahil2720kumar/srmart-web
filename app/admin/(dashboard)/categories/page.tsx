@@ -275,7 +275,7 @@ export default function CategoriesPage() {
                           )}
                         </TableCell>
                         <TableCell>
-                          {new Date(category.created_at).toLocaleDateString()}
+                          {new Date(category?.created_at).toLocaleDateString()}
                         </TableCell>
                         <TableCell className="text-right">
                           <DropdownMenu>
