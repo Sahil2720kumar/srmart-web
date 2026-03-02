@@ -671,7 +671,7 @@ export function useUpsertDeliveryBoyBankDetails() {
     }) => {
       const { data, error } = await supabase
         .from('delivery_boy_bank_details')
-        .upsert({ ...bankDetails, delivery_boy_id: userId })
+        .upsert({ ...bankDetails, delivery_boy_id: userId } as DeliveryBoyBankDetailsInsert)
         .select('*')
         .single();
 
@@ -779,7 +779,7 @@ export function useUpsertDeliveryVehicle() {
     }) => {
       const { data, error } = await supabase
         .from('delivery_vehicles')
-        .upsert({ ...vehicle, delivery_boy_id: userId })
+        .upsert({ ...vehicle, delivery_boy_id: userId } as DeliveryVehicleInsert)
         .select('*')
         .single();
 

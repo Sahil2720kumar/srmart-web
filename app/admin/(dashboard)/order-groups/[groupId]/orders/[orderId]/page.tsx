@@ -143,7 +143,7 @@ export default function OrderDetailsPage() {
 
 
   console.log(order);
-  
+
   // ── Mutations ────────────────────────────────────────────────────────────
   const updateStatus = useUpdateOrderStatus();
   const cancelOrder = useCustomerCancelOrder();
@@ -297,7 +297,7 @@ export default function OrderDetailsPage() {
                 </p>
                 <Badge
                   className={
-                    paymentStatusColors[order.payment_status] ??
+                    paymentStatusColors[order.payment_status ?? ""] ??
                     paymentStatusColors.pending
                   }
                 >
@@ -315,7 +315,9 @@ export default function OrderDetailsPage() {
               <div>
                 <p className="text-sm text-muted-foreground mb-2">Created At</p>
                 <p className="text-sm">
-                  {new Date(order.created_at).toLocaleString()}
+                  {order.created_at
+                    ? new Date(order.created_at).toLocaleDateString()
+                    : "—"}
                 </p>
               </div>
               <div>
@@ -449,7 +451,7 @@ export default function OrderDetailsPage() {
                 </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-muted-foreground">Delivery Fee{order.is_free_delivery?" (absorbed)":""}</span>
+                <span className="text-muted-foreground">Delivery Fee{order.is_free_delivery ? " (absorbed)" : ""}</span>
                 <span className="font-semibold">
                   ₹{Number(order.delivery_fee ?? 0).toFixed(2)}
                 </span>
@@ -473,14 +475,14 @@ export default function OrderDetailsPage() {
                 </span>
               </div>
               <div className="mt-4 pt-4 border-t space-y-2">
-                <div className="flex justify-between">
+                {/* <div className="flex justify-between">
                   <span className="text-muted-foreground">
                     Commission Rate
                   </span>
                   <span className="font-semibold">
                     {order.commission_rate ?? 0}%
                   </span>
-                </div>
+                </div> */}
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">
                     Total Commission
@@ -685,19 +687,17 @@ export default function OrderDetailsPage() {
                     {/* Vertical Line */}
                     {index < timelineSteps.length - 1 && (
                       <div
-                        className={`absolute left-3 top-7 w-0.5 h-full ${
-                          isCompleted ? "bg-primary" : "bg-border"
-                        }`}
+                        className={`absolute left-3 top-7 w-0.5 h-full ${isCompleted ? "bg-primary" : "bg-border"
+                          }`}
                       />
                     )}
 
                     {/* Circle */}
                     <div
-                      className={`relative z-10 flex h-6 w-6 items-center justify-center rounded-full border-2 ${
-                        isCompleted
-                          ? "border-primary bg-primary"
-                          : "border-border bg-background"
-                      }`}
+                      className={`relative z-10 flex h-6 w-6 items-center justify-center rounded-full border-2 ${isCompleted
+                        ? "border-primary bg-primary"
+                        : "border-border bg-background"
+                        }`}
                     >
                       {isCompleted && (
                         <div className="h-2 w-2 rounded-full bg-primary-foreground" />
@@ -707,11 +707,10 @@ export default function OrderDetailsPage() {
                     {/* Content */}
                     <div className="flex-1">
                       <p
-                        className={`font-medium ${
-                          isCurrent
-                            ? "text-foreground"
-                            : "text-muted-foreground"
-                        }`}
+                        className={`font-medium ${isCurrent
+                          ? "text-foreground"
+                          : "text-muted-foreground"
+                          }`}
                       >
                         {step.label}
                       </p>
@@ -722,7 +721,9 @@ export default function OrderDetailsPage() {
                       )}
                       {trackingEntry && (
                         <p className="text-xs text-muted-foreground">
-                          {new Date(trackingEntry.created_at).toLocaleString()}
+                          {trackingEntry.created_at
+                            ? new Date(trackingEntry.created_at).toLocaleDateString()
+                            : "—"}
                           {trackingEntry.description
                             ? ` — ${trackingEntry.description}`
                             : ""}

@@ -54,7 +54,7 @@ export default function SubcategoriesPage() {
 
   // Fetch category data
   const { data: category, isLoading: categoryLoading } = useCategory(categoryId as string);
-  
+
   // Fetch subcategories
   const { data: subcategories = [], isLoading: subcategoriesLoading } = useAllSubCategoriesByCategory(categoryId as string);
 
@@ -98,11 +98,11 @@ export default function SubcategoriesPage() {
   };
 
   const filteredSubcategories = subcategories.filter(sub => {
-    const matchesSearch = 
+    const matchesSearch =
       sub.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       sub.slug.toLowerCase().includes(searchQuery.toLowerCase());
-    
-    const matchesStatus = 
+
+    const matchesStatus =
       statusFilter === "all" ||
       (statusFilter === "active" && sub.is_active) ||
       (statusFilter === "inactive" && !sub.is_active);
@@ -285,7 +285,11 @@ export default function SubcategoriesPage() {
                           )}
                         </TableCell>
                         <TableCell>
-                          {new Date(subcategory?.created_at).toLocaleDateString()}
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {category.created_at
+                              ? new Date(category.created_at).toLocaleDateString()
+                              : "—"}
+                          </p>
                         </TableCell>
                         <TableCell className="text-right">
                           <DropdownMenu>
@@ -301,7 +305,7 @@ export default function SubcategoriesPage() {
                                   Edit
                                 </Link>
                               </DropdownMenuItem>
-                              <DropdownMenuItem 
+                              <DropdownMenuItem
                                 onClick={() => handleToggleActive(subcategory.id)}
                                 disabled={toggleStatusMutation.isPending}
                               >
@@ -335,7 +339,7 @@ export default function SubcategoriesPage() {
                 </div>
                 <h3 className="text-lg font-semibold mb-2">No subcategories found</h3>
                 <p className="text-muted-foreground mb-4">
-                  {searchQuery || statusFilter !== "all" 
+                  {searchQuery || statusFilter !== "all"
                     ? "Try adjusting your search or filter criteria"
                     : "Get started by creating your first subcategory"
                   }
@@ -363,8 +367,8 @@ export default function SubcategoriesPage() {
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction 
-                onClick={confirmDelete} 
+              <AlertDialogAction
+                onClick={confirmDelete}
                 className="bg-red-600 hover:bg-red-700"
                 disabled={deleteSubCategoryMutation.isPending}
               >

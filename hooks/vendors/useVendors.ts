@@ -310,7 +310,7 @@ export function useUpsertVendorBankDetails() {
     }) => {
       const { data, error } = await supabase
         .from('vendor_bank_details')
-        .upsert({ ...bankDetails, vendor_id: vendorId })
+        .upsert({ ...bankDetails, vendor_id: vendorId } as VendorBankDetailsInsert)
         .select('*')
         .single();
 
@@ -337,7 +337,7 @@ export function useUpdateVendorKycStatus() {
       rejectedReason,
     }: {
       vendorId: string;
-      status: 'pending' | 'approved' | 'rejected';
+      status: 'pending' | 'approved' | 'rejected' | 'verified';
       rejectedReason?: string;
     }) => {
       const updates: VendorUpdate = {

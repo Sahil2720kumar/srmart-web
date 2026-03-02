@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ChevronLeft, Save, Upload, X } from "lucide-react";
+import { ChevronLeft, Save, Upload, X, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,10 +10,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import Link from "next/link";
-import { 
-  useCategory, 
-  useCreateCategory, 
-  useUpdateCategory 
+import {
+  useCategory,
+  useCreateCategory,
+  useUpdateCategory
 } from "@/hooks/products/useCategories";
 import { toast } from "sonner";
 
@@ -36,7 +36,9 @@ interface FormErrors {
   display_order?: string;
 }
 
-export default function AddEditCategoryPage() {
+// ─── Inner Content (calls useSearchParams — safe inside Suspense) ─────────────
+
+function AddEditCategoryContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const categoryId = searchParams.get("categoryId");
@@ -80,7 +82,6 @@ export default function AddEditCategoryPage() {
         is_active: category.is_active || false,
       });
 
-      // Set image preview if exists
       if (category.image) {
         setImagePreview(category.image);
       }
@@ -97,15 +98,15 @@ export default function AddEditCategoryPage() {
   const handleInputChange = (field: keyof FormData, value: any) => {
     setFormData(prev => {
       const updated = { ...prev, [field]: value };
-      
+
       // Auto-generate slug from name
       if (field === "name" && !isEditMode) {
         updated.slug = generateSlug(value);
       }
-      
+
       return updated;
     });
-    
+
     // Clear error when user starts typing
     if (errors[field as keyof FormErrors]) {
       setErrors(prev => ({ ...prev, [field]: "" }));
@@ -169,7 +170,6 @@ export default function AddEditCategoryPage() {
       };
 
       if (isEditMode && categoryId) {
-        // Update existing category
         await updateCategory.mutateAsync({
           categoryId,
           updates: categoryData,
@@ -177,25 +177,23 @@ export default function AddEditCategoryPage() {
           removeImage: removeExistingImage && !formData.image,
         });
 
-        toast("Category updated",{
+        toast("Category updated", {
           description: "Category has been updated successfully",
         });
       } else {
-        // Create new category
         await createCategory.mutateAsync({
           category: categoryData,
           imageFile: formData.image || undefined,
         });
 
-        toast("Category created",{
+        toast("Category created", {
           description: "New category has been created successfully",
         });
       }
 
-      // Redirect to list
       router.push("/admin/categories");
     } catch (error: any) {
-      toast("Error",{
+      toast("Error", {
         description: error.message || "Failed to save category",
       });
     } finally {
@@ -203,7 +201,7 @@ export default function AddEditCategoryPage() {
     }
   };
 
-  const isFormValid = 
+  const isFormValid =
     formData.name.trim() &&
     formData.slug.trim() &&
     formData.commission_rate &&
@@ -213,7 +211,7 @@ export default function AddEditCategoryPage() {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
+          <Loader2 className="h-12 w-12 animate-spin text-primary mx-auto" />
           <p className="mt-4 text-muted-foreground">Loading category...</p>
         </div>
       </div>
@@ -460,5 +458,21 @@ export default function AddEditCategoryPage() {
         </form>
       </div>
     </div>
+  );
+}
+
+// ─── Default Export — Suspense MUST wrap the component that calls useSearchParams ─
+
+export default function AddEditCategoryPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      }
+    >
+      <AddEditCategoryContent />
+    </Suspense>
   );
 }

@@ -42,8 +42,29 @@ import {
   XCircle,
 } from "lucide-react";
 
+interface TicketMessage {
+  sender: string;
+  role: string;
+  message: string;
+  timestamp: string;
+}
+
+interface Ticket {
+  id: string;
+  userType: "Customer" | "Vendor" | "Delivery";
+  userName: string;
+  userEmail: string;
+  userPhone: string;
+  subject: string;
+  priority: "Critical" | "High" | "Medium" | "Low";
+  status: "Open" | "In Progress" | "Resolved" | "Closed";
+  createdAt: string;
+  lastUpdated: string;
+  messages: TicketMessage[];
+}
+
 // Mock Data
-const mockTickets = [
+const mockTickets:Ticket[] = [
   {
     id: "TKT001",
     userType: "Customer",
@@ -169,11 +190,11 @@ export default function AdminSupportPage() {
   const [userTypeFilter, setUserTypeFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [priorityFilter, setPriorityFilter] = useState("all");
-  const [selectedTicket, setSelectedTicket] = useState(null);
+  const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [replyMessage, setReplyMessage] = useState("");
 
-  const formatDateTime = (dateString) => {
+  const formatDateTime = (dateString:string) => {
     return new Date(dateString).toLocaleString("en-IN", {
       day: "2-digit",
       month: "short",
@@ -183,8 +204,8 @@ export default function AdminSupportPage() {
     });
   };
 
-  const getPriorityBadge = (priority) => {
-    const variants = {
+  const getPriorityBadge = (priority: Ticket["priority"]) => {
+    const variants: Record<Ticket["priority"], string> = {
       Critical: "bg-red-500 text-white hover:bg-red-500",
       High: "bg-orange-500 text-white hover:bg-orange-500",
       Medium: "bg-yellow-500 text-white hover:bg-yellow-500",
@@ -193,24 +214,24 @@ export default function AdminSupportPage() {
     return <Badge className={variants[priority]}>{priority}</Badge>;
   };
 
-  const getStatusBadge = (status) => {
-    const variants = {
+  const getStatusBadge = (status: Ticket["status"]) => {
+    const variants: Record<Ticket["status"], { color: string; icon: React.ElementType }> = {
       Open: { color: "bg-red-100 text-red-700", icon: AlertCircle },
       "In Progress": { color: "bg-blue-100 text-blue-700", icon: Clock },
       Resolved: { color: "bg-green-100 text-green-700", icon: CheckCircle },
       Closed: { color: "bg-slate-100 text-slate-700", icon: XCircle },
     };
-    const StatusIcon = variants[status]?.icon || AlertCircle;
+    const { color, icon: StatusIcon } = variants[status];
     return (
-      <Badge className={variants[status]?.color}>
+      <Badge className={color}>
         <StatusIcon className="w-3 h-3 mr-1" />
         {status}
       </Badge>
     );
   };
 
-  const getUserTypeBadge = (type) => {
-    const variants = {
+  const getUserTypeBadge = (type: Ticket["userType"]) => {
+    const variants: Record<Ticket["userType"], string> = {
       Customer: "bg-purple-100 text-purple-700",
       Vendor: "bg-emerald-100 text-emerald-700",
       Delivery: "bg-blue-100 text-blue-700",
@@ -218,7 +239,7 @@ export default function AdminSupportPage() {
     return <Badge className={variants[type]}>{type}</Badge>;
   };
 
-  const filterTickets = (tickets) => {
+  const filterTickets = (tickets: Ticket[]): Ticket[] => {
     let filtered = tickets;
 
     if (searchTerm) {
@@ -246,9 +267,14 @@ export default function AdminSupportPage() {
     return filtered;
   };
 
-  const handleViewTicket = (ticket) => {
+  const handleViewTicket = (ticket: Ticket) => {
     setSelectedTicket(ticket);
     setIsDrawerOpen(true);
+  };
+
+  const handleUpdateStatus = (newStatus: Ticket["status"]) => {
+    console.log("Updating ticket status to:", newStatus);
+    setIsDrawerOpen(false);
   };
 
   const handleSendReply = () => {
@@ -258,12 +284,7 @@ export default function AdminSupportPage() {
     // Add reply to ticket messages
     setReplyMessage("");
   };
-
-  const handleUpdateStatus = (newStatus) => {
-    console.log("Updating ticket status to:", newStatus);
-    setIsDrawerOpen(false);
-  };
-
+  
   const filteredTickets = filterTickets(mockTickets);
 
   const statusCounts = {

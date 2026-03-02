@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { ArrowLeft, Plus, Check, ChevronDown } from 'lucide-react';
+import { ArrowLeft, Plus, Check, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -20,7 +20,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
-import { useQuery } from '@tanstack/react-query';
 import { createClient } from '@/lib/supabase/client';
 import {
   useCoupon,
@@ -37,8 +36,6 @@ import {
 
 const supabase = createClient();
 
-
-
 // ─────────────────────────────────────────────
 // Form state
 // ─────────────────────────────────────────────
@@ -53,7 +50,6 @@ const blankForm = {
   max_discount_amount:    undefined as number | undefined,
   min_order_amount:       0,
   applicable_to:          'all' as ApplicableTo,
-  // For subcategory we need to pick a parent category first (UI only, not saved)
   _parent_category_id:    '',
   applicable_id:          undefined as string | undefined,
   usage_limit:            undefined as number | undefined,
@@ -77,7 +73,7 @@ function couponToForm(c: any): FormState {
     max_discount_amount:    c.max_discount_amount ? Number(c.max_discount_amount) : undefined,
     min_order_amount:       Number(c.min_order_amount),
     applicable_to:          (c.applicable_to ?? 'all') as ApplicableTo,
-    _parent_category_id:    '',  // resolved lazily from applicable_id when editing subcategory
+    _parent_category_id:    '',
     applicable_id:          c.applicable_id ?? undefined,
     usage_limit:            c.usage_limit ?? undefined,
     usage_limit_per_user:   c.usage_limit_per_user ?? 1,
@@ -105,10 +101,6 @@ function formToPayload(f: FormState) {
   };
 }
 
-// ─────────────────────────────────────────────
-// Labels for applicable_to options
-// ─────────────────────────────────────────────
-
 const APPLICABLE_TO_LABELS: Record<ApplicableTo, string> = {
   all:         'All Products',
   category:    'Specific Category',
@@ -117,11 +109,9 @@ const APPLICABLE_TO_LABELS: Record<ApplicableTo, string> = {
   product:     'Specific Product',
 };
 
-// ─────────────────────────────────────────────
-// Page
-// ─────────────────────────────────────────────
+// ─── Inner Content (calls useSearchParams — safe inside Suspense) ─────────────
 
-export default function AddEditCouponPage() {
+function AddEditCouponContent() {
   const router       = useRouter();
   const searchParams = useSearchParams();
   const editId       = searchParams.get('edit');
@@ -130,7 +120,6 @@ export default function AddEditCouponPage() {
   const [formData, setFormData] = useState<FormState>(blankForm);
   const [errors,   setErrors]   = useState<Record<string, string>>({});
 
-  // ── Load existing coupon ───────────────────────────────────────────────────
   const { data: existingCoupon, isLoading: loadingCoupon } = useCoupon(editId ?? '');
 
   useEffect(() => {
@@ -139,13 +128,11 @@ export default function AddEditCouponPage() {
     }
   }, [isEdit, existingCoupon]);
 
-  // ── Scope data loaders ─────────────────────────────────────────────────────
   const { data: categories   = [] } = useCategories();
   const { data: subCategories = [] } = useSubCategoriesByCategory(formData._parent_category_id);
   const { data: vendors       = [] } = useVendors();
   const { data: products      = [] } = useProducts();
 
-  // When editing a subcategory coupon, resolve the parent category from the applicable_id
   useEffect(() => {
     if (
       isEdit &&
@@ -165,12 +152,10 @@ export default function AddEditCouponPage() {
     }
   }, [isEdit, existingCoupon, formData._parent_category_id]);
 
-  // ── Mutations ──────────────────────────────────────────────────────────────
   const createCoupon = useCreateCoupon();
   const updateCoupon = useUpdateCoupon();
   const isSaving     = createCoupon.isPending || updateCoupon.isPending;
 
-  // ── Helpers ────────────────────────────────────────────────────────────────
   const set = (field: keyof FormState, value: any) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
     setErrors((prev) => ({ ...prev, [field]: '' }));
@@ -190,11 +175,10 @@ export default function AddEditCouponPage() {
     setFormData((prev) => ({
       ...prev,
       _parent_category_id: catId,
-      applicable_id:       undefined,  // reset sub-category selection
+      applicable_id:       undefined,
     }));
   };
 
-  // ── Validation ─────────────────────────────────────────────────────────────
   const validate = (): boolean => {
     const errs: Record<string, string> = {};
     if (!formData.code.trim())                errs.code             = 'Coupon code is required';
@@ -210,7 +194,6 @@ export default function AddEditCouponPage() {
         new Date(formData.end_date) <= new Date(formData.start_date))
       errs.end_date = 'End date must be after start date';
 
-    // Scope validation
     if (formData.applicable_to !== 'all') {
       if (formData.applicable_to === 'subcategory' && !formData._parent_category_id)
         errs._parent_category_id = 'Please select a parent category first';
@@ -222,7 +205,6 @@ export default function AddEditCouponPage() {
     return Object.keys(errs).length === 0;
   };
 
-  // ── Submit ─────────────────────────────────────────────────────────────────
   const handleSubmit = (addAnother = false) => {
     if (!validate()) return;
     const payload = formToPayload(formData);
@@ -253,9 +235,6 @@ export default function AddEditCouponPage() {
     );
   }
 
-  // ─────────────────────────────────────────────
-  // JSX
-  // ─────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-background p-4 md:p-8">
       <div className="max-w-[1200px] mx-auto space-y-6">
@@ -407,37 +386,29 @@ export default function AddEditCouponPage() {
               </CardContent>
             </Card>
 
-            {/* ── Applicability ── */}
+            {/* Applicability */}
             <Card>
               <CardHeader><CardTitle>Applicability</CardTitle></CardHeader>
               <CardContent className="space-y-4">
-
-                {/* Step 1 — applicable_to type */}
                 <div className="space-y-2">
                   <Label>Apply To <span className="text-destructive">*</span></Label>
                   <Select value={formData.applicable_to} onValueChange={handleApplicableToChange}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
                       {(Object.keys(APPLICABLE_TO_LABELS) as ApplicableTo[]).map((key) => (
-                        <SelectItem key={key} value={key}>
-                          {APPLICABLE_TO_LABELS[key]}
-                        </SelectItem>
+                        <SelectItem key={key} value={key}>{APPLICABLE_TO_LABELS[key]}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
 
-                {/* Step 2a — for subcategory: pick parent category first */}
                 {formData.applicable_to === 'subcategory' && (
                   <div className="space-y-2">
                     <Label>
                       Parent Category <span className="text-destructive">*</span>
                       <span className="text-xs text-muted-foreground ml-2">required to filter sub-categories</span>
                     </Label>
-                    <Select
-                      value={formData._parent_category_id}
-                      onValueChange={handleParentCategoryChange}
-                    >
+                    <Select value={formData._parent_category_id} onValueChange={handleParentCategoryChange}>
                       <SelectTrigger className={errors._parent_category_id ? 'border-destructive' : ''}>
                         <SelectValue placeholder="Select a category…" />
                       </SelectTrigger>
@@ -453,7 +424,6 @@ export default function AddEditCouponPage() {
                   </div>
                 )}
 
-                {/* Step 2b — specific item selector (all types except 'all') */}
                 {formData.applicable_to !== 'all' && (
                   <div className="space-y-2">
                     <Label>
@@ -461,7 +431,6 @@ export default function AddEditCouponPage() {
                       <span className="text-destructive ml-1">*</span>
                     </Label>
 
-                    {/* Subcategory — only show after parent category is chosen */}
                     {formData.applicable_to === 'subcategory' && (
                       <>
                         {!formData._parent_category_id ? (
@@ -475,13 +444,7 @@ export default function AddEditCouponPage() {
                             disabled={subCategories.length === 0}
                           >
                             <SelectTrigger className={errors.applicable_id ? 'border-destructive' : ''}>
-                              <SelectValue
-                                placeholder={
-                                  subCategories.length === 0
-                                    ? 'No sub-categories found'
-                                    : 'Select a sub-category…'
-                                }
-                              />
+                              <SelectValue placeholder={subCategories.length === 0 ? 'No sub-categories found' : 'Select a sub-category…'} />
                             </SelectTrigger>
                             <SelectContent>
                               {subCategories.map((sc) => (
@@ -493,12 +456,8 @@ export default function AddEditCouponPage() {
                       </>
                     )}
 
-                    {/* Category */}
                     {formData.applicable_to === 'category' && (
-                      <Select
-                        value={formData.applicable_id ?? ''}
-                        onValueChange={(v) => set('applicable_id', v)}
-                      >
+                      <Select value={formData.applicable_id ?? ''} onValueChange={(v) => set('applicable_id', v)}>
                         <SelectTrigger className={errors.applicable_id ? 'border-destructive' : ''}>
                           <SelectValue placeholder="Select a category…" />
                         </SelectTrigger>
@@ -510,30 +469,21 @@ export default function AddEditCouponPage() {
                       </Select>
                     )}
 
-                    {/* Vendor */}
                     {formData.applicable_to === 'vendor' && (
-                      <Select
-                        value={formData.applicable_id ?? ''}
-                        onValueChange={(v) => set('applicable_id', v)}
-                      >
+                      <Select value={formData.applicable_id ?? ''} onValueChange={(v) => set('applicable_id', v)}>
                         <SelectTrigger className={errors.applicable_id ? 'border-destructive' : ''}>
                           <SelectValue placeholder="Select a vendor…" />
                         </SelectTrigger>
                         <SelectContent>
                           {vendors.map((v) => (
-                            // vendor FK → vendors.user_id (matches products.vendor_id)
                             <SelectItem key={v.user_id} value={v.user_id}>{v.store_name}</SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
                     )}
 
-                    {/* Product */}
                     {formData.applicable_to === 'product' && (
-                      <Select
-                        value={formData.applicable_id ?? ''}
-                        onValueChange={(v) => set('applicable_id', v)}
-                      >
+                      <Select value={formData.applicable_id ?? ''} onValueChange={(v) => set('applicable_id', v)}>
                         <SelectTrigger className={errors.applicable_id ? 'border-destructive' : ''}>
                           <SelectValue placeholder="Select a product…" />
                         </SelectTrigger>
@@ -691,5 +641,21 @@ export default function AddEditCouponPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+// ─── Default Export — Suspense MUST wrap the component that calls useSearchParams ─
+
+export default function AddEditCouponPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      }
+    >
+      <AddEditCouponContent />
+    </Suspense>
   );
 }

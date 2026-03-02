@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   Store, MapPin, Shield, Clock, FileText, Ban,
@@ -70,19 +70,13 @@ const DAYS_OF_WEEK: { key: DayOfWeek; label: string }[] = [
 
 const DEFAULT_DAY: DaySchedule = { open: "09:00", close: "21:00", isClosed: false };
 
-/** Returns a fresh deep-copy of default hours (all days open) */
 const getDefaultHours = (): BusinessHours =>
   DAYS_OF_WEEK.reduce((acc, day) => {
     acc[day.key] = { ...DEFAULT_DAY };
     return acc;
   }, {} as BusinessHours);
 
-/**
- * Maps any DB kyc_status value to a valid KycStatus for the Select.
- * Legacy values like "not_uploaded" and "verified" fall back to "pending"
- * so the Select always has a valid controlled value and never renders blank.
- */
-const toKycStatus = (raw: string | null | undefined): KycStatus => {  
+const toKycStatus = (raw: string | null | undefined): KycStatus => {
   if (raw === "approved" || raw === "rejected") return raw;
   return "pending";
 };
@@ -99,12 +93,12 @@ const getEmptyForm = (): VendorFormData => ({
   is_suspended: false, suspended_until: "", suspension_reason: "",
 });
 
-// ─── Page ─────────────────────────────────────────────────────────────────────
+// ─── Inner Content (calls useSearchParams — safe inside Suspense) ─────────────
 
-export default function EditVendorPage() {
+function EditVendorContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const editId = searchParams.get("edit"); // vendorId (user_id)
+  const editId = searchParams.get("edit");
 
   const updateVendor = useUpdateVendor();
   const { data: existingVendor, isLoading: loadingVendor } = useVendor(editId ?? "");
@@ -122,9 +116,6 @@ export default function EditVendorPage() {
     if (!existingVendor) return;
     const v = existingVendor;
 
-    // Parse business_hours — mirrors mobile EditProfileScreen:
-    //   Day present in DB  →  isClosed: false, use stored times
-    //   Day missing in DB  →  isClosed: true,  keep default times
     let parsedHours: BusinessHours = getDefaultHours();
     try {
       let raw: any = v.business_hours;
@@ -164,7 +155,6 @@ export default function EditVendorPage() {
       is_open:              v.is_open             ?? true,
       is_verified:          v.is_verified         ?? false,
       business_hours:       parsedHours,
-      // toKycStatus maps legacy DB values ("not_uploaded", "verified", null) → "pending"
       kyc_status:           toKycStatus(v.kyc_status),
       kyc_rejection_reason: v.kyc_rejected_reason ?? "",
       admin_notes:          v.admin_notes         ?? "",
@@ -175,9 +165,7 @@ export default function EditVendorPage() {
 
     if (v.store_image)  { setExistingStoreImageUrl(v.store_image);   setStoreImagePreview(v.store_image);   }
     if (v.store_banner) { setExistingStoreBannerUrl(v.store_banner); setStoreBannerPreview(v.store_banner); }
-
   }, [existingVendor]);
-console.log("fpxjxj",formData);
 
   // ── Field helpers ──────────────────────────────────────────────────────────
   const handleInputChange = (field: keyof VendorFormData, value: any) => {
@@ -279,7 +267,6 @@ console.log("fpxjxj",formData);
         storeBannerUrl = await uploadVendorImage(formData.store_banner, editId, "store_banner");
       }
 
-      // Only save open days to DB (strip isClosed flag), mirrors mobile
       const formattedBusinessHours: Record<string, { open: string; close: string }> = {};
       DAYS_OF_WEEK.forEach(({ key }) => {
         if (!formData.business_hours[key].isClosed) {
@@ -529,9 +516,7 @@ console.log("fpxjxj",formData);
               <div className="flex items-center justify-between">
                 <div>
                   <Label>Is Store Open</Label>
-                  <p className="text-sm text-muted-foreground">
-                    Enable to make the store visible to customers
-                  </p>
+                  <p className="text-sm text-muted-foreground">Enable to make the store visible to customers</p>
                 </div>
                 <Switch
                   checked={formData.is_open}
@@ -542,9 +527,7 @@ console.log("fpxjxj",formData);
               <div className="flex items-center justify-between">
                 <div>
                   <Label>Is Vendor Verified</Label>
-                  <p className="text-sm text-muted-foreground">
-                    Admin-controlled verification status
-                  </p>
+                  <p className="text-sm text-muted-foreground">Admin-controlled verification status</p>
                 </div>
                 <Switch
                   checked={formData.is_verified}
@@ -622,10 +605,9 @@ console.log("fpxjxj",formData);
                 <Select
                   value={formData.kyc_status}
                   onValueChange={v => {
-                    if (!v) return; // 🚨 prevent empty string overwrite
+                    if (!v) return;
                     handleInputChange("kyc_status", v as KycStatus);
                   }}
-                  
                 >
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
@@ -681,9 +663,7 @@ console.log("fpxjxj",formData);
               <div className="flex items-center justify-between">
                 <div>
                   <Label>Suspend Vendor</Label>
-                  <p className="text-sm text-muted-foreground">
-                    Temporarily suspend vendor account
-                  </p>
+                  <p className="text-sm text-muted-foreground">Temporarily suspend vendor account</p>
                 </div>
                 <Switch
                   checked={formData.is_suspended}
@@ -739,6 +719,22 @@ console.log("fpxjxj",formData);
         </div>
       </div>
     </div>
+  );
+}
+
+// ─── Default Export — Suspense MUST wrap the component that calls useSearchParams ─
+
+export default function EditVendorPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      }
+    >
+      <EditVendorContent />
+    </Suspense>
   );
 }
 

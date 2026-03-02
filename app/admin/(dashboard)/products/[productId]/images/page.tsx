@@ -33,14 +33,10 @@ import {
 } from "@/lib/upload";
 import { ProductImage } from "@/types/supabase";
 
-export default function ProductImagesPage({
-  params,
-}: {
-  params: { productId: string };
-}) {
+export default function ProductImagesPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const {productId} = useParams();
+  const {productId} = useParams<{productId:string}>();
 
   // ─── Local UI state ───────────────────────────────────────────────────────
   const fileInputRef = useRef<HTMLInputElement>(null);

@@ -22,7 +22,7 @@ import { useProduct, useProductImages } from "@/hooks";
 import { useParams } from "next/navigation";
 
 export default function ProductDetailPage( ) {
-  const { productId:id } = useParams();
+  const { productId:id } = useParams<{productId:string}>();
   const { data: product, isLoading } = useProduct(id);
   const { data: images } = useProductImages(id);
 

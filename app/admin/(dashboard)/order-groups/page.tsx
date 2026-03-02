@@ -271,7 +271,7 @@ export default function OrderGroupsPage() {
                         <TableCell>
                           <Badge
                             className={
-                              paymentStatusColors[group.payment_status] ??
+                              paymentStatusColors[group.payment_status ?? ""] ??
                               paymentStatusColors.pending
                             }
                           >
@@ -285,7 +285,9 @@ export default function OrderGroupsPage() {
                           ₹{Number(group.total_amount).toFixed(2)}
                         </TableCell>
                         <TableCell>
-                          {new Date(group.created_at).toLocaleString()}
+                          {group.created_at
+                            ? new Date(group.created_at).toLocaleDateString()
+                            : "—"}
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-2">

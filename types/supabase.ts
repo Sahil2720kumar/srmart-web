@@ -388,13 +388,37 @@ export type CartItemWithProduct = Cart & {
 
 // Order with relations
 export type OrderWithRelations = Order & {
-  customer?: Customer
-  vendor?: Vendor
-  delivery_boy?: DeliveryBoy | null
-  order_items?: OrderItem[]
-  order_tracking?: OrderTracking[]
-  delivery_address?: CustomerAddress
-}
+  customers?: Customer & {
+    users?: User;
+  };
+
+  vendors?: Vendor & {
+    users?: User;
+  };
+
+  delivery_boys?: DeliveryBoy & {
+    users?: Pick<User, "phone">;
+  };
+
+  delivery_address?: CustomerAddress;
+
+  coupon?: {
+    code: string;
+    discount_type: string;
+    discount_value: number;
+  };
+};
+
+
+export type OrderItemWithProduct = OrderItem & {
+  products?: Pick<Product, "name" | "image" | "sku">;
+};
+
+
+
+export type OrderGroupWithRelations = OrderGroup & {
+  orders?: OrderWithRelations[];
+};
 
 // Product with relations
 export type ProductWithRelations = Product & {
@@ -471,3 +495,6 @@ export type VendorFilters = {
   state?: string
   min_rating?: number
 }
+
+
+export type CommissionType = "default" | "category" | "subcategory" | "custom";

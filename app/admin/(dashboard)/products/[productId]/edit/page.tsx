@@ -32,7 +32,7 @@ import type { ProductUpdate } from "@/types/supabase";
 export default function EditProductPage() {
 
   const router = useRouter();
-  const { productId } = useParams();
+  const { productId } = useParams<{productId:string}>();
   console.log("id", productId);
 
   const { data: product, isLoading: isLoadingProduct } = useProduct(productId);
@@ -136,27 +136,22 @@ export default function EditProductPage() {
     e.preventDefault();
 
     // Build updates object with only changed fields
-    const updates: ProductUpdate = {};
+    const rawUpdates: Record<string, unknown> = {};
     changedFields.forEach((field) => {
       const value = formData[field];
-
-      // Handle numeric fields
+    
       if (["price", "discount_price", "discount_percentage", "commission_rate"].includes(field)) {
-        updates[field] = value ? parseFloat(value) : null;
-      }
-      // Handle integer fields
-      else if (["stock_quantity", "low_stock_threshold"].includes(field)) {
-        updates[field] = value ? parseInt(value) : null;
-      }
-      // Handle string fields that can be null
-      else if (["barcode", "short_description", "description", "sub_category_id", "expiry_date"].includes(field)) {
-        updates[field] = value || null;
-      }
-      // Handle other fields
-      else {
-        updates[field] = value;
+        rawUpdates[field] = value ? parseFloat(value) : null;
+      } else if (["stock_quantity", "low_stock_threshold"].includes(field)) {
+        rawUpdates[field] = value ? parseInt(value) : null;
+      } else if (["barcode", "short_description", "description", "sub_category_id", "expiry_date"].includes(field)) {
+        rawUpdates[field] = value || null;
+      } else {
+        rawUpdates[field] = value;
       }
     });
+    
+    const updates = rawUpdates as ProductUpdate;
 
     updateProduct.mutate(
       { productId:productId, updates },
@@ -181,10 +176,10 @@ export default function EditProductPage() {
           "You have unsaved changes. Are you sure you want to discard them?"
         )
       ) {
-        router.push(`/admin/products/${id}`);
+        router.push(`/admin/products/${productId}`);
       }
     } else {
-      router.push(`/admin/products/${id}`);
+      router.push(`/admin/products/${productId}`);
     }
   };
 

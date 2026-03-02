@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, Suspense } from "react";
 import { ArrowLeft, Check, Loader2, Upload, X, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -91,9 +91,9 @@ function buildDiscount(type: DiscountType | "", value: number | ""): string {
   return "";
 }
 
-// ─── Page ─────────────────────────────────────────────────────────────────────
+// ─── Inner Content (calls useSearchParams — safe inside Suspense) ─────────────
 
-export default function OfferUpsertPage() {
+function OfferUpsertContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const editId = searchParams.get("edit");
@@ -138,11 +138,7 @@ export default function OfferUpsertPage() {
   const [saving, setSaving] = useState(false);
 
   // Get subcategories for selected category
-  const { data: subcategories = [] } = useSubCategories({
-    category_id: form.applicable_to === "subcategory" && form.applicable_id 
-      ? categories.find(c => c.id === form.applicable_id)?.id 
-      : undefined,
-  });
+  const { data: subcategories = [] } = useSubCategories({});
 
   // Load existing offer data
   useEffect(() => {
@@ -186,7 +182,7 @@ export default function OfferUpsertPage() {
 
   const validateField = <K extends keyof OfferFormState>(key: K): boolean => {
     const newErrors: FormErrors = { ...errors };
-    
+
     switch (key) {
       case "title":
         if (!form.title.trim()) {
@@ -195,7 +191,7 @@ export default function OfferUpsertPage() {
           delete newErrors.title;
         }
         break;
-      
+
       case "start_date":
         if (!form.start_date) {
           newErrors.start_date = "Start date is required";
@@ -203,7 +199,7 @@ export default function OfferUpsertPage() {
           delete newErrors.start_date;
         }
         break;
-      
+
       case "end_date":
         if (form.end_date && form.end_date <= form.start_date) {
           newErrors.end_date = "End date must be after start date";
@@ -211,7 +207,7 @@ export default function OfferUpsertPage() {
           delete newErrors.end_date;
         }
         break;
-      
+
       case "discount_value":
         const showDiscountFields = [
           "banner",
@@ -224,7 +220,7 @@ export default function OfferUpsertPage() {
           "seasonal",
         ].includes(form.offer_type);
         const showDiscountValue = showDiscountFields && form.discount_type && form.discount_type !== "bogo";
-        
+
         if (showDiscountValue && form.discount_value === "") {
           newErrors.discount_value = "Discount value is required";
         } else if (form.discount_type === "percentage" && typeof form.discount_value === "number") {
@@ -243,17 +239,17 @@ export default function OfferUpsertPage() {
           delete newErrors.discount_value;
         }
         break;
-      
+
       case "applicable_id":
-        if ((form.applicable_to === "category" || 
-             form.applicable_to === "subcategory" || 
-             form.applicable_to === "vendor") && !form.applicable_id) {
+        if ((form.applicable_to === "category" ||
+          form.applicable_to === "subcategory" ||
+          form.applicable_to === "vendor") && !form.applicable_id) {
           newErrors.applicable_id = `Please select a ${form.applicable_to}`;
         } else {
           delete newErrors.applicable_id;
         }
         break;
-      
+
       case "selected_product_ids":
         if (form.applicable_to === "product" && form.selected_product_ids.length === 0) {
           newErrors.applicable_id = "Please select at least one product";
@@ -261,7 +257,7 @@ export default function OfferUpsertPage() {
           delete newErrors.applicable_id;
         }
         break;
-      
+
       case "min_purchase_amount":
         if (form.min_purchase_amount !== "" && Number(form.min_purchase_amount) < 0) {
           newErrors.min_purchase_amount = "Amount must be positive";
@@ -269,7 +265,7 @@ export default function OfferUpsertPage() {
           delete newErrors.min_purchase_amount;
         }
         break;
-      
+
       case "display_order":
         if (form.display_order !== "" && Number(form.display_order) < 0) {
           newErrors.display_order = "Order must be positive";
@@ -278,7 +274,7 @@ export default function OfferUpsertPage() {
         }
         break;
     }
-    
+
     setErrors(newErrors);
     return !newErrors[key];
   };
@@ -286,19 +282,19 @@ export default function OfferUpsertPage() {
   const handleBannerChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    
+
     // Validate file size (max 5MB)
     if (file.size > 5 * 1024 * 1024) {
       toast.error("Image size must be less than 5MB");
       return;
     }
-    
+
     // Validate file type
     if (!file.type.startsWith("image/")) {
       toast.error("Please upload a valid image file");
       return;
     }
-    
+
     setBannerFile(file);
     const reader = new FileReader();
     reader.onloadend = () => {
@@ -325,7 +321,7 @@ export default function OfferUpsertPage() {
     "bogo",
     "seasonal",
   ].includes(form.offer_type);
-  
+
   const showDiscountValue = showDiscountFields && form.discount_type && form.discount_type !== "bogo";
 
   const discountPreview = useMemo(
@@ -342,12 +338,12 @@ export default function OfferUpsertPage() {
 
   const validate = (): boolean => {
     const e: FormErrors = {};
-    
+
     // Title validation
     if (!form.title.trim()) {
       e.title = "Title is required";
     }
-    
+
     // Date validations
     if (!form.start_date) {
       e.start_date = "Start date is required";
@@ -355,7 +351,7 @@ export default function OfferUpsertPage() {
     if (form.end_date && form.end_date <= form.start_date) {
       e.end_date = "End date must be after start date";
     }
-    
+
     // Discount validation
     if (showDiscountValue && form.discount_value === "") {
       e.discount_value = "Discount value is required";
@@ -368,17 +364,17 @@ export default function OfferUpsertPage() {
         e.discount_value = "Amount must be positive";
       }
     }
-    
+
     // Applicable to validation
-    if ((form.applicable_to === "category" || 
-         form.applicable_to === "subcategory" || 
-         form.applicable_to === "vendor") && !form.applicable_id) {
+    if ((form.applicable_to === "category" ||
+      form.applicable_to === "subcategory" ||
+      form.applicable_to === "vendor") && !form.applicable_id) {
       e.applicable_id = `Please select a ${form.applicable_to}`;
     }
     if (form.applicable_to === "product" && form.selected_product_ids.length === 0) {
       e.applicable_id = "Please select at least one product";
     }
-    
+
     // Numeric validations
     if (form.min_purchase_amount !== "" && Number(form.min_purchase_amount) < 0) {
       e.min_purchase_amount = "Amount must be positive";
@@ -386,16 +382,16 @@ export default function OfferUpsertPage() {
     if (form.display_order !== "" && Number(form.display_order) < 0) {
       e.display_order = "Order must be positive";
     }
-    
+
     setErrors(e);
-    
+
     // Mark all fields as touched to show errors
     const allTouched: Partial<Record<keyof OfferFormState, boolean>> = {};
     Object.keys(e).forEach((key) => {
       allTouched[key as keyof OfferFormState] = true;
     });
     setTouched((prev) => ({ ...prev, ...allTouched }));
-    
+
     return Object.keys(e).length === 0;
   };
 
@@ -426,8 +422,8 @@ export default function OfferUpsertPage() {
         is_active: form.is_active,
       };
 
-      console.log("offerData",offerData);
-      
+      console.log("offerData", offerData);
+
       if (isEdit && editId) {
         // Update existing offer
         await updateOffer.mutateAsync({
@@ -929,8 +925,8 @@ export default function OfferUpsertPage() {
                             <TableCell>
                               <div className="flex items-center gap-2">
                                 {p.image && (
-                                  <img 
-                                    src={p.image} 
+                                  <img
+                                    src={p.image}
                                     alt={p.name}
                                     className="h-8 w-8 rounded object-cover"
                                   />
@@ -989,5 +985,21 @@ export default function OfferUpsertPage() {
 
       </div>
     </div>
+  );
+}
+
+// ─── Default Export — Suspense MUST wrap the component that calls useSearchParams ─
+
+export default function OfferUpsertPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      }
+    >
+      <OfferUpsertContent />
+    </Suspense>
   );
 }

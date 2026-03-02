@@ -37,6 +37,7 @@ export interface PayoutCashoutRequest {
   completed_at?: string | null;
   rejected_at?: string | null;
   cancelled_at?: string | null;
+  cancellation_reason?: string | null;
 }
 
 export interface PayoutWallet {

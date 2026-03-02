@@ -164,7 +164,7 @@ export default function OrdersPage() {
                   </p>
                   <Badge
                     className={
-                      paymentStatusColors[orderGroup.payment_status] ??
+                      paymentStatusColors[orderGroup.payment_status ?? ""] ??
                       paymentStatusColors.pending
                     }
                   >
@@ -345,7 +345,7 @@ export default function OrdersPage() {
                         <TableCell>
                           <Badge
                             className={
-                              paymentStatusColors[order.payment_status] ??
+                              paymentStatusColors[order.payment_status ?? ""] ??
                               paymentStatusColors.pending
                             }
                           >
@@ -362,7 +362,9 @@ export default function OrdersPage() {
                           ₹{Number(order.vendor_payout ?? 0).toFixed(2)}
                         </TableCell>
                         <TableCell>
-                          {new Date(order.created_at).toLocaleString()}
+                          {order.created_at
+                            ? new Date(order.created_at).toLocaleDateString()
+                            : "—"}
                         </TableCell>
                         <TableCell className="text-right">
                           <Link

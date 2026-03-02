@@ -7,10 +7,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { 
-  useCategory, 
-  useCategoryStats, 
-  useAllSubCategoriesByCategory 
+import {
+  useCategory,
+  useCategoryStats,
+  useAllSubCategoriesByCategory
 } from "@/hooks/products/useCategories";
 
 export default function CategoryDetailPage() {
@@ -22,8 +22,8 @@ export default function CategoryDetailPage() {
   const { data: stats, isLoading: isLoadingStats } = useCategoryStats(categoryId);
 
 
-  
-  const { data: subcategories = [], isLoading: isLoadingSubcategories } = 
+
+  const { data: subcategories = [], isLoading: isLoadingSubcategories } =
     useAllSubCategoriesByCategory(categoryId);
 
   if (isLoadingCategory) {
@@ -67,8 +67,8 @@ export default function CategoryDetailPage() {
           <div className="flex items-center gap-4">
             {category.image ? (
               <div className="h-16 w-16 rounded-lg overflow-hidden bg-muted">
-                <img 
-                  src={category.image} 
+                <img
+                  src={category.image}
                   alt={category.name}
                   className="h-full w-full object-cover"
                 />
@@ -183,10 +183,19 @@ export default function CategoryDetailPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                {new Date(category?.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                {category.created_at ? (
+                  new Date(category.created_at).toLocaleDateString('en-US', {
+                    month: 'short',
+                    day: 'numeric',
+                  })
+                ) : (
+                  "—"
+                )}
               </div>
               <p className="text-xs text-muted-foreground mt-1">
-                {new Date(category?.created_at).toLocaleDateString()}
+                {category.created_at
+                  ? new Date(category.created_at).toLocaleDateString()
+                  : "—"}
               </p>
             </CardContent>
           </Card>
@@ -195,14 +204,14 @@ export default function CategoryDetailPage() {
         {/* Tabs */}
         <Tabs className="flex-col" defaultValue="overview">
           <TabsList>
-            <TabsTrigger 
-              className="data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm" 
+            <TabsTrigger
+              className="data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm"
               value="overview"
             >
               Overview
             </TabsTrigger>
-            <TabsTrigger 
-              className="data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm" 
+            <TabsTrigger
+              className="data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm"
               value="subcategories"
             >
               Subcategories ({stats?.subcategory_count || 0})
@@ -228,7 +237,7 @@ export default function CategoryDetailPage() {
                     <div>
                       <p className="text-sm text-muted-foreground">Brand Color</p>
                       <div className="flex items-center gap-2 mt-1">
-                        <div 
+                        <div
                           className="h-6 w-6 rounded border"
                           style={{ backgroundColor: category.color }}
                         />
@@ -310,15 +319,13 @@ export default function CategoryDetailPage() {
                         <div className="flex items-center gap-3">
                           {sub.image ? (
                             <div className="h-10 w-10 rounded overflow-hidden bg-muted">
-                              <img 
-                                src={sub.image} 
+                              <img
+                                src={sub.image}
                                 alt={sub.name}
                                 className="h-full w-full object-cover"
                               />
                             </div>
-                          ) : sub.icon ? (
-                            <span className="text-xl">{sub.icon}</span>
-                          ) : null}
+                          )  : null}
                           <div>
                             <p className="font-medium">{sub.name}</p>
                             <p className="text-xs text-muted-foreground">{sub.slug}</p>

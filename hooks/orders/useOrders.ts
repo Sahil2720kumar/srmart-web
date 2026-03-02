@@ -11,12 +11,14 @@ import {
   OrderGroup,
   OrderFilters,
   OrderWithRelations,
+  OrderItemWithProduct,
   CreateOrderGroupWithOrdersArgs,
   VendorAcceptOrderArgs,
   VendorRejectOrderArgs,
   MarkOrderReadyArgs,
   CustomerCancelOrderArgs,
   AssignDeliveryPartnerArgs,
+  OrderGroupWithRelations,
 } from '@/types/supabase';
 
 // ============================================================================
@@ -194,7 +196,7 @@ export function useOrderItems(orderId: string) {
         .eq('order_id', orderId);
 
       if (error) throw error;
-      return data as OrderItem[];
+      return data as OrderItemWithProduct[];
     },
     enabled: !!orderId,
   });
@@ -241,7 +243,7 @@ export function useOrderGroup(orderGroupId: string) {
         .single();
 
       if (error) throw error;
-      return data as OrderGroup;
+      return data as unknown as OrderGroupWithRelations ;
     },
     enabled: !!orderGroupId,
   });
@@ -272,40 +274,7 @@ export function useOrderSummary(filters?: Record<string, any>) {
 /**
  * Create order group with multiple orders
  */
-export function useCreateOrderGroup() {
-  const queryClient = useQueryClient();
 
-  return useMutation({
-    mutationFn: async (params: CreateOrderGroupWithOrdersArgs) => {
-      const { data, error } = await supabase.rpc(
-        'create_order_group_with_orders_simple',
-        {
-          p_customer_id: params.p_customer_id,
-          p_orders: params.p_orders,
-          p_payment_method: params.p_payment_method,
-          p_subtotal: params.p_subtotal,
-          p_tax: params.p_tax,
-          p_discount: params.p_discount,
-          p_delivery_fee: params.p_delivery_fee,
-          p_coupon_code: params.p_coupon_code,
-        }
-      );
-
-      if (error) throw error;
-      return data as string; // Returns order group ID
-    },
-    onSuccess: (orderGroupId, variables) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.orders.all });
-      queryClient.invalidateQueries({ queryKey: queryKeys.orderGroups.all });
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.orders.byCustomer(variables.p_customer_id),
-      });
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.cart.byCustomer(variables.p_customer_id),
-      });
-    },
-  });
-}
 
 /**
  * Vendor accepts order

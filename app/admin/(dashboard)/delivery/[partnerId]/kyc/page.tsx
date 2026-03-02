@@ -116,7 +116,7 @@ function DocCard({
               {doc.document_name || docTypeLabel(doc.document_type)}
             </CardTitle>
           </div>
-          <Badge variant="outline" className={`flex-shrink-0 text-xs capitalize ${statusStyle[doc.status] ?? statusStyle.pending}`}>
+          <Badge variant="outline" className={`flex-shrink-0 text-xs capitalize ${statusStyle[doc.status ?? "pending"] ?? statusStyle.pending}`}>
             {doc.status === "not_uploaded" ? "Not Uploaded" : doc.status}
           </Badge>
         </div>

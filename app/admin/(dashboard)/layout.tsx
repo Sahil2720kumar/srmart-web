@@ -1,4 +1,5 @@
 "use client";
+export const dynamic = "force-dynamic";
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -168,7 +169,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               <div className="w-8 h-8 rounded-lg bg-sidebar-primary flex items-center justify-center">
                 <Store className="w-5 h-5 text-sidebar-primary-foreground" />
               </div>
-              <span className="text-lg font-bold text-sidebar-foreground">GroceryHub</span>
+              <span className="text-lg font-bold text-sidebar-foreground">SrMart</span>
             </Link>
             <Button variant="ghost" size="icon" className="lg:hidden" onClick={() => setSidebarOpen(false)}>
               <X className="h-5 w-5" />

@@ -22,7 +22,7 @@ import { useCreateProduct, useCategories, useSubCategoriesByCategory } from "@/h
 import { useVendors } from "@/hooks";
 import { toast } from "sonner";
 import { uploadProductImage } from "@/lib/upload";
-import type { ProductInsert } from "@/types/supabase";
+import type { CommissionType, ProductInsert } from "@/types/supabase";
 
 // ─── Multi-image types ────────────────────────────────────────────────────────
 
@@ -90,6 +90,7 @@ export default function AddProductPage() {
     [addFiles]
   );
 
+
   const [formData, setFormData] = useState({
     name: "",
     slug: "",
@@ -106,7 +107,7 @@ export default function AddProductPage() {
     unit: "",
     stock_quantity: "",
     low_stock_threshold: "10",
-    commission_type: "default" as const,
+    commission_type: "default" as CommissionType,
     commission_rate: "",
     is_available: true,
     is_featured: false,

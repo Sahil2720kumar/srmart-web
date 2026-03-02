@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useRouter, useParams, useSearchParams } from "next/navigation";
+import { useState, useEffect, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ChevronLeft, Save, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -87,12 +87,12 @@ function FormField({
   );
 }
 
-// ─── page ─────────────────────────────────────────────────────────────────────
+// ─── inner content (calls useSearchParams — safe inside Suspense) ─────────────
 
-export default function EditDeliveryPartnerPage() {
+function EditDeliveryPartnerContent() {
   const router              = useRouter();
-  const searchParams = useSearchParams();
-  const partnerId = searchParams.get("edit")!;
+  const searchParams        = useSearchParams();
+  const partnerId           = searchParams.get("edit")!;
 
   const { data: partner, isLoading: loadingPartner } = useDeliveryBoyByUser(partnerId);
   const updateDeliveryBoy   = useUpdateDeliveryBoy();
@@ -271,7 +271,7 @@ export default function EditDeliveryPartnerPage() {
               />
             </FormField>
 
-            <FormField id="license_number" label="License Number" required error={errors.license_number} >
+            <FormField id="license_number" label="License Number" required error={errors.license_number}>
               <Input
                 id="license_number"
                 value={formData.license_number}
@@ -390,5 +390,21 @@ export default function EditDeliveryPartnerPage() {
         </div>
       </form>
     </div>
+  );
+}
+
+// ─── default export — Suspense MUST wrap the component that calls useSearchParams ─
+
+export default function EditDeliveryPartnerPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex h-64 items-center justify-center">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        </div>
+      }
+    >
+      <EditDeliveryPartnerContent />
+    </Suspense>
   );
 }

@@ -43,7 +43,7 @@ import Image from "next/image";
 import { useCategories, useDeleteCategory, useToggleCategoryStatus } from "@/hooks/products/useCategories";
 import { toast } from "sonner";
 import { Category } from "@/types/supabase";
- 
+
 export default function CategoriesPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -63,11 +63,11 @@ export default function CategoriesPage() {
   const handleToggleActive = async (id: string, currentStatus: boolean) => {
     try {
       await toggleStatus.mutateAsync(id);
-      toast("Status updated",{
+      toast("Status updated", {
         description: `Category ${currentStatus ? "deactivated" : "activated"} successfully`,
       });
     } catch (error) {
-      toast("Error",{
+      toast("Error", {
         description: "Failed to update category status",
       });
     }
@@ -83,13 +83,13 @@ export default function CategoriesPage() {
 
     try {
       await deleteCategory.mutateAsync(selectedCategory.id);
-      toast("Category deleted",{
+      toast("Category deleted", {
         description: `${selectedCategory.name} has been deleted successfully`,
       });
       setDeleteDialogOpen(false);
       setSelectedCategory(null);
     } catch (error) {
-      toast("Error",{
+      toast("Error", {
         description: "Failed to delete category. It may have associated products.",
       });
     }
@@ -97,19 +97,19 @@ export default function CategoriesPage() {
 
   const filteredCategories = categories
     .filter(cat => {
-      const matchesSearch = 
+      const matchesSearch =
         cat.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         cat.slug.toLowerCase().includes(searchQuery.toLowerCase());
-      
+
       return matchesSearch;
     })
     .sort((a, b) => {
       if (sortBy === "display_order") {
-        return a.display_order - b.display_order;
+        return(a.display_order ?? 0) - (b.display_order ?? 0)
       } else if (sortBy === "commission") {
         return Number(b.commission_rate) - Number(a.commission_rate);
       } else if (sortBy === "created") {
-        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+        return new Date(b.created_at ??0).getTime() - new Date(a.created_at??0).getTime();
       }
       return 0;
     });
@@ -275,7 +275,11 @@ export default function CategoriesPage() {
                           )}
                         </TableCell>
                         <TableCell>
-                          {new Date(category?.created_at).toLocaleDateString()}
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {category.created_at
+                              ? new Date(category.created_at).toLocaleDateString()
+                              : "—"}
+                          </p>
                         </TableCell>
                         <TableCell className="text-right">
                           <DropdownMenu>
@@ -297,8 +301,8 @@ export default function CategoriesPage() {
                                   Edit
                                 </Link>
                               </DropdownMenuItem>
-                              <DropdownMenuItem 
-                                onClick={() => handleToggleActive(category.id, category.is_active)}
+                              <DropdownMenuItem
+                                onClick={() => handleToggleActive(category.id, category.is_active ?? false)}
                               >
                                 <Power className="mr-2 h-4 w-4" />
                                 {category.is_active ? "Deactivate" : "Activate"}
@@ -357,8 +361,8 @@ export default function CategoriesPage() {
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction 
-                onClick={confirmDelete} 
+              <AlertDialogAction
+                onClick={confirmDelete}
                 className="bg-red-600 hover:bg-red-700"
                 disabled={deleteCategory.isPending}
               >

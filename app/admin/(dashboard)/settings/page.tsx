@@ -85,7 +85,7 @@ export default function AdminSettingsPage() {
   const [primaryColor, setPrimaryColor] = useState("#3b82f6");
   const [borderRadius, setBorderRadius] = useState("0.5");
 
-  const handleSave = (section) => {
+  const handleSave = (section:string) => {
     console.log(`Saving ${section} settings...`);
     // Show toast notification
     alert(`${section} settings saved successfully!`);
